@@ -80,6 +80,22 @@ class AlertOut(ORMModel):
     acked: bool
 
 
+class AlertDailyCount(BaseModel):
+    """按天告警统计（近 7 天堆叠柱）。"""
+    date: str                            # YYYY-MM-DD（UTC）
+    info: int = 0
+    warn: int = 0
+    crit: int = 0
+
+
+# ===== overview =====
+class DeviceTopItem(BaseModel):
+    device_id: str
+    name: str
+    metric: str
+    value: float
+
+
 # ===== biz system =====
 class BizSystemOut(ORMModel):
     id: int

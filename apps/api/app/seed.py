@@ -163,17 +163,26 @@ def seed(force: bool = False) -> None:
                 ("rtr-core-01", "info", "路由收敛", "OSPF 邻居重收敛完成"),
                 ("srv-app-01", "warn", "磁盘空间不足", "disk /data 使用 91%"),
             ]
+            # 近 7 天历史告警（让「告警等级统计」堆叠柱有分布），时间均匀散布
+            for d in range(7):
+                for j in range(random.randint(2, 4)):
+                    did, lv, title, detail = random.choice(samples)
+                    offset = d * 86400 + random.uniform(0, 86400)
+                    db.add(Alert(device_id=did, level=lv, title=title, detail=detail,
+                                 created_at=_ts(now - offset), acked=random.random() < 0.7))
             for i, (did, lv, title, detail) in enumerate(samples):
                 db.add(Alert(device_id=did, level=lv, title=title, detail=detail,
                              created_at=_ts(now - (i + 1) * 1800), acked=i > 2))
-            print(f"告警 {len(samples)} 条已创建")
+            print("告警 近7天历史 + 5 条实时样例 已创建")
 
         # ---- 业务系统 ----
-        if db.scalar(select(BizSystem.id)) is None or force:
-            for name, owner, status, sla_t, sla_a in BIZ_SYSTEMS:
-                db.merge(BizSystem(name=name, owner=owner, status=status,
-                                   sla_target=sla_t, sla_actual=sla_a))
-            print(f"业务系统 {len(BIZ_SYSTEMS)} 个已创建")
+        existing = set(db.execute(select(BizSystem.name)).scalars())
+        missing = [row for row in BIZ_SYSTEMS if row[0] not in existing]
+        if missing or force:
+            for name, owner, status, sla_t, sla_a in missing:
+                db.add(BizSystem(name=name, owner=owner, status=status,
+                                 sla_target=sla_t, sla_actual=sla_a))
+            print(f"业务系统新增 {len(missing)} 个（已存在 {len(existing)} 个跳过）")
 
         db.commit()
         print("seed 完成。")

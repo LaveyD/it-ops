@@ -1,170 +1,87 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import * as echarts from 'echarts'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../api'
-import type { Overview } from '../types'
+import type { Device, Overview } from '../types'
+import ChartCard from '../components/ChartCard.vue'
+import DevicePieCard from '../components/cards/DevicePieCard.vue'
+import PerfTrendCard from '../components/cards/PerfTrendCard.vue'
+import BizListCard from '../components/cards/BizListCard.vue'
+import AlertBarsCard from '../components/cards/AlertBarsCard.vue'
+import AlertFeedCard from '../components/cards/AlertFeedCard.vue'
+import TopNCard from '../components/cards/TopNCard.vue'
+import LocationCard from '../components/cards/LocationCard.vue'
+import OnDutyCard from '../components/cards/OnDutyCard.vue'
 
 const overview = ref<Overview | null>(null)
+const devices = ref<Device[]>([])
 const now = ref(new Date())
-const clockTimer = setInterval(() => (now.value = new Date()), 1000)
-
-// ECharts 容器
-const pieEl = shallowRef<HTMLElement>()
-const barEl = shallowRef<HTMLElement>()
-const lineEl = shallowRef<HTMLElement>()
-const charts: echarts.ECharts[] = []
+const scale = ref(1)
+let clockTimer: ReturnType<typeof setInterval> | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
-let cleanup: (() => void) | null = null
-const darkText = '#7d93b2'
-const okColor = '#22c55e'
-const warnColor = '#faad14'
-const critColor = '#ff4d4f'
-const accentColor = '#2f7bff'
+let onResize: (() => void) | null = null
 
-function baseOption(): echarts.EChartsCoreOption {
-  return {
-    backgroundColor: 'transparent',
-    textStyle: { color: darkText },
-    grid: { left: 34, right: 12, top: 24, bottom: 22 },
-    tooltip: { trigger: 'item' },
-  }
-}
-
-function renderPie() {
-  if (!pieEl.value || !overview.value) return
-  const c = echarts.init(pieEl.value)
-  charts.push(c)
-  c.setOption({
-    ...baseOption(),
-    legend: { bottom: 0, textStyle: { color: darkText, fontSize: 11 }, itemWidth: 10 },
-    series: [{
-      type: 'pie', radius: ['52%', '74%'], center: ['50%', '44%'],
-      label: { color: darkText, fontSize: 11, formatter: '{b}: {c}' },
-      data: [
-        { value: overview.value.device_count - countAbnormal(), name: '正常', itemStyle: { color: okColor } },
-        { value: overview.value.alert_counts.warn, name: '警告', itemStyle: { color: warnColor } },
-        { value: overview.value.alert_counts.crit, name: '严重', itemStyle: { color: critColor } },
-      ],
-    }],
-  })
-}
-
-function countAbnormal() {
-  if (!overview.value) return 0
-  const a = overview.value.alert_counts
-  return a.warn + a.crit
-}
-
-function renderBar() {
-  if (!barEl.value || !overview.value) return
-  const c = echarts.init(barEl.value)
-  charts.push(c)
-  const a = overview.value.alert_counts
-  c.setOption({
-    ...baseOption(),
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: ['info', 'warn', 'crit'], axisLabel: { color: darkText } },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: 'rgba(90,130,200,0.15)' } }, axisLabel: { color: darkText } },
-    series: [{
-      type: 'bar', barWidth: 26,
-      data: [
-        { value: a.info, itemStyle: { color: accentColor } },
-        { value: a.warn, itemStyle: { color: warnColor } },
-        { value: a.crit, itemStyle: { color: critColor } },
-      ],
-      label: { show: true, position: 'top', color: darkText },
-    }],
-  })
-}
-
-function renderLine() {
-  if (!lineEl.value) return
-  const c = echarts.init(lineEl.value)
-  charts.push(c)
-  // mock 趋势（M2 接 /api/devices/{id}/metrics）
-  const ts: string[] = []
-  const v1: number[] = []
-  const v2: number[] = []
-  let a = 45, b = 60
-  for (let i = 23; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 3600e3)
-    ts.push(`${String(d.getHours()).padStart(2, '0')}:00`)
-    a = Math.max(5, Math.min(95, a + (Math.random() - 0.5) * 14))
-    b = Math.max(20, Math.min(95, b + (Math.random() - 0.5) * 8))
-    v1.push(+a.toFixed(1)); v2.push(+b.toFixed(1))
-  }
-  c.setOption({
-    ...baseOption(),
-    legend: { data: ['CPU', '内存'], textStyle: { color: darkText, fontSize: 11 }, top: 0, right: 0 },
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: ts, axisLabel: { color: darkText, fontSize: 10, interval: 5 } },
-    yAxis: { type: 'value', max: 100, splitLine: { lineStyle: { color: 'rgba(90,130,200,0.15)' } }, axisLabel: { color: darkText } },
-    series: [
-      { name: 'CPU', type: 'line', smooth: true, data: v1, lineStyle: { color: accentColor }, itemStyle: { color: accentColor }, areaStyle: { opacity: 0.12 } },
-      { name: '内存', type: 'line', smooth: true, data: v2, lineStyle: { color: '#8b5cf6' }, itemStyle: { color: '#8b5cf6' } },
-    ],
-  })
+// 大屏 scale-to-fit：固定 1920×1080 画布，按视口等比缩放居中（非 16:9 留黑边）
+function fit() {
+  scale.value = Math.min(innerWidth / 1920, innerHeight / 1080)
 }
 
 async function load() {
   try {
-    overview.value = await api.overview()
-    renderPie(); renderBar(); renderLine()
+    const [o, d] = await Promise.all([api.overview(), api.devices()])
+    overview.value = o
+    devices.value = d
   } catch (e) {
-    console.error('overview load failed', e)
+    console.error('dashboard load failed', e)
   }
 }
 
 onMounted(() => {
   load()
-  pollTimer = setInterval(load, 30000)
-  const onResize = () => charts.forEach((c) => c.resize())
+  fit()
+  onResize = fit
   window.addEventListener('resize', onResize)
-  cleanup = () => {
-    if (pollTimer) clearInterval(pollTimer)
-    clearInterval(clockTimer)
-    window.removeEventListener('resize', onResize)
-    charts.forEach((c) => c.dispose())
-  }
+  clockTimer = setInterval(() => (now.value = new Date()), 1000)
+  pollTimer = setInterval(load, 30000)
 })
-onUnmounted(() => cleanup?.())
+onUnmounted(() => {
+  if (clockTimer) clearInterval(clockTimer)
+  if (pollTimer) clearInterval(pollTimer)
+  if (onResize) window.removeEventListener('resize', onResize)
+})
 </script>
 
 <template>
-  <div class="dash" v-if="overview">
-    <header class="topbar">
-      <div class="logo">IT 运维<span>大屏</span></div>
-      <div class="nav">
-        <router-link to="/" class="active">总览</router-link>
-        <router-link to="/editor">拓扑编辑</router-link>
-      </div>
-      <div class="stat-chip">设备在线率 <b>{{ (overview.online_rate * 100).toFixed(1) }}%</b></div>
-      <div class="stat-chip">未确认告警 <b>{{ overview.unacked_alerts }}</b></div>
-      <div class="stat-chip" v-if="overview.topology">拓扑 v{{ overview.topology.version }}</div>
-      <div class="clock">{{ now.toLocaleDateString('zh-CN') }} {{ now.toLocaleTimeString('zh-CN') }}</div>
-    </header>
+  <div class="stage-wrap" v-if="overview">
+    <div class="stage" :style="{ transform: `scale(${scale})` }">
+      <header class="topbar">
+        <div class="logo">IT 运维<span>大屏</span></div>
+        <div class="nav">
+          <router-link to="/" class="active">总览</router-link>
+          <router-link to="/editor">拓扑编辑</router-link>
+        </div>
+        <div class="stat-chip">设备在线率 <b>{{ (overview.online_rate * 100).toFixed(1) }}%</b></div>
+        <div class="stat-chip alert-chip" v-if="overview.unacked_alerts">
+          未确认告警 <b>{{ overview.unacked_alerts }}</b>
+        </div>
+        <div class="stat-chip" v-if="overview.topology">拓扑 v{{ overview.topology.version }}</div>
+        <div class="clock">{{ now.toLocaleDateString('zh-CN') }} {{ now.toLocaleTimeString('zh-CN') }}</div>
+      </header>
 
     <div class="dash-body">
       <!-- 左列 -->
       <div class="col">
-        <div class="card">
-          <div class="head"><span class="t">设备状态分布</span><span class="time">{{ overview.device_count }} 台</span></div>
-          <div class="chart" ref="pieEl"></div>
-        </div>
-        <div class="card">
-          <div class="head"><span class="t">性能趋势（示例）</span></div>
-          <div class="chart" ref="lineEl"></div>
-        </div>
-        <div class="card">
-          <div class="head"><span class="t">业务系统</span></div>
-          <ul class="biz-list">
-            <li v-for="b in overview.biz_systems" :key="b.id">
-              <span class="dot" :class="b.status"></span>
-              <span class="name">{{ b.name }}</span>
-              <span class="sla" v-if="b.sla_actual != null">{{ b.sla_actual }}%</span>
-            </li>
-          </ul>
-        </div>
+        <ChartCard title="设备状态分布" :time="`${overview.device_count} 台`">
+          <DevicePieCard :devices="devices" />
+        </ChartCard>
+        <ChartCard title="性能趋势" extra="近 6 小时">
+          <PerfTrendCard :devices="devices" />
+        </ChartCard>
+        <ChartCard title="业务系统概览" :time="`${overview.biz_systems.length} 个`">
+          <BizListCard :systems="overview.biz_systems" />
+        </ChartCard>
+        <ChartCard title="告警等级统计" extra="近 7 天">
+          <AlertBarsCard />
+        </ChartCard>
       </div>
 
       <!-- 中：拓扑（M3 接 GraphView） -->
@@ -178,29 +95,36 @@ onUnmounted(() => cleanup?.())
 
       <!-- 右列 -->
       <div class="col">
-        <div class="card">
-          <div class="head"><span class="t">告警等级（未确认）</span></div>
-          <div class="chart" ref="barEl"></div>
-        </div>
-        <div class="card">
-          <div class="head"><span class="t">实时告警</span><span class="time">M4 接入 WS</span></div>
-          <p class="dim" style="font-size:13px">M4 接入 WebSocket 后，告警将在此滚动展示。</p>
-        </div>
+        <ChartCard title="实时告警" extra="4s 滚动">
+          <AlertFeedCard />
+        </ChartCard>
+        <ChartCard title="CPU TOP 10" extra="近 24h">
+          <TopNCard />
+        </ChartCard>
+        <ChartCard title="机房分布">
+          <LocationCard :devices="devices" />
+        </ChartCard>
+        <ChartCard title="值班信息">
+          <OnDutyCard />
+        </ChartCard>
       </div>
     </div>
+    </div>
   </div>
-  <div v-else class="dash"><p style="padding:40px;color:var(--text-dim)">加载数据中…</p></div>
+  <div v-else class="stage-wrap"><p class="loading">加载数据中…</p></div>
 </template>
 
 <style scoped>
-.biz-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-.biz-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.biz-list .name { flex: 1; }
-.biz-list .sla { color: var(--text-dim); font-size: 12px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dot.normal { background: var(--ok); }
-.dot.warn { background: var(--warn); }
-.dot.alert { background: var(--crit); box-shadow: 0 0 8px var(--crit); }
-.dim { color: var(--text-dim); font-size: 12px; }
-.topo-box .dim { margin-top: 4px; }
+/* scale-to-fit：外层铺满视口居中，内层固定 1920×1080 画布等比缩放 */
+.stage-wrap {
+  width: 100vw; height: 100vh; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; background: var(--bg);
+}
+.stage {
+  width: 1920px; height: 1080px; flex-shrink: 0;
+  transform-origin: center center;
+  display: grid; grid-template-rows: 56px 1fr;
+  background: radial-gradient(1400px 700px at 70% -10%, #14264a 0%, var(--bg) 55%);
+}
+.loading { padding: 40px; color: var(--text-dim); }
 </style>

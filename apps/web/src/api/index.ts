@@ -44,6 +44,9 @@ export const api = {
     const s = q ? '?' + new URLSearchParams(q).toString() : ''
     return request<import('../types').Alert[]>(`/api/alerts${s}`)
   },
+  alertStats: (days = 7) => request<import('../types').AlertDailyCount[]>(`/api/alerts/stats?days=${days}`),
+  deviceTop: (metric = 'cpu', n = 10, windowHours = 1) =>
+    request<import('../types').DeviceTopItem[]>(`/api/overview/top?metric=${metric}&n=${n}&window_hours=${windowHours}`),
   bizSystems: () => request<import('../types').BizSystem[]>('/api/biz-systems'),
   topologyActive: () => request<import('../types').TopologyActive>('/api/topology/active'),
 }

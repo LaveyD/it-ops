@@ -59,6 +59,20 @@ export interface MetricSeries {
   points: [string, number][]
 }
 
+export interface AlertDailyCount {
+  date: string
+  info: number
+  warn: number
+  crit: number
+}
+
+export interface DeviceTopItem {
+  device_id: string
+  name: string
+  metric: string
+  value: number
+}
+
 export interface TopoNode {
   id: string
   label: string

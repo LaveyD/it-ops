@@ -36,6 +36,7 @@ Base：`/api`；认证：`Authorization: Bearer <jwt>`（除 `/api/auth/login` �
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/alerts` | query：`level` `unacked=1` `device_id` `limit`（默认 50） |
+| GET | `/api/alerts/stats` | query：`days`（默认 7）→ `[{date, info, warn, crit}]` 按天 × 等级（缺 0 天补零，堆叠柱数据源） |
 | POST | `/api/alerts/{id}/ack` | 确认告警 |
 
 ## 5. 业务系统 / 概览
@@ -44,6 +45,7 @@ Base：`/api`；认证：`Authorization: Bearer <jwt>`（除 `/api/auth/login` �
 |---|---|---|
 | GET | `/api/biz-systems` | 列表 |
 | GET | `/api/overview` | 首页聚合（一次拿全，减少请求）：`{device_count, online_rate, alert_counts: {info, warn, crit}, unacked_alerts, biz_systems, topology_version}` |
+| GET | `/api/overview/top` | query：`metric` `n` `window_hours` → `[{device_id, name, metric, value}]` 各设备窗口内最新值降序 TOP N（卡片⑥） |
 
 ## 6. WebSocket 实时通道
 

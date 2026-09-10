@@ -2,15 +2,15 @@
 
 ## 里程碑
 
-### M1 脚手架（跑通全链路）
+### M1 脚手架（跑通全链路）✅
 - 后端：`uv` 项目初始化，FastAPI + SQLAlchemy + Alembic，`db/init.sql` 建库
 - 前端：`npm create vite` 脚手架（Vue3+TS），Pinia + vue-router + ECharts
 - 认证：登录接口 + 前端守卫（内置 admin）
 - mock 数据：`seed.py` 幂等初始化（示例拓扑 v1 激活 + 设备 + 指标 + 告警 + 业务系统）
 - **验收**：`/api/overview` 返回聚合数据；前端能登录并显示一个占位页；Alembic 迁移干净
 
-### M2 大屏首页（第一版可见效果）
-- 布局壳（顶栏 + 三列）、暗色主题、rem 适配
+### M2 大屏首页（第一版可见效果）✅
+- 布局壳（顶栏 + 三列）、暗色主题、scale-to-fit 等比缩放
 - 8 张卡片（mock 数据，ECharts 暗色主题）
 - **验收**：1920×1080 下布局无滚动条溢出；卡片数据真实渲染；刷新时间戳更新
 

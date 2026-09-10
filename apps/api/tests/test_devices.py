@@ -77,3 +77,27 @@ def test_alert_ack(client, auth):
     r2 = client.post(f"/api/alerts/{aid}/ack", headers=auth)
     assert r2.status_code == 200
     assert r2.json()["acked"] is True
+
+
+def test_alert_stats(client, auth):
+    r = client.get("/api/alerts/stats", headers=auth, params={"days": "7"})
+    assert r.status_code == 200
+    items = r.json()
+    assert len(items) == 7
+    for d in items:
+        assert set(d.keys()) == {"date", "info", "warn", "crit"}
+        assert d["info"] >= 0 and d["warn"] >= 0 and d["crit"] >= 0
+    # seed + collector 保证近 7 天有告警
+    assert sum(x["info"] + x["warn"] + x["crit"] for x in items) > 0
+
+
+def test_overview_top(client, auth):
+    r = client.get("/api/overview/top", headers=auth,
+                   params={"metric": "cpu", "n": "5", "window_hours": "26"})
+    assert r.status_code == 200
+    items = r.json()
+    assert 0 < len(items) <= 5
+    assert all(x["metric"] == "cpu" for x in items)
+    # 降序
+    vals = [x["value"] for x in items]
+    assert vals == sorted(vals, reverse=True)
