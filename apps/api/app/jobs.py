@@ -1,25 +1,77 @@
-"""后台采集任务：collector → 写库 →（M4）广播。"""
-import time
+"""后台采集任务：collector → 写库 → WS 广播。
 
-from sqlalchemy import select
+每轮采集产生至多一条合并广播消息：
+{"type":"feed_update",
+ "statuses":  [{"id","name","status"}, ...],           # 设备状态变更
+ "alerts":    [AlertOut 全字段, ...],                   # 本轮新告警（含 device_name）
+ "top":       {"metric":"cpu", "items":[{device_id,name,value}, ...]} | null}
+空轮（无任何新增）不广播。
+"""
+import logging
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import func, select
 
 from .collectors import get_collector
 from .db import SessionLocal
 from .models import Alert, Device, DeviceMetric
+from .ws import hub
+
+log = logging.getLogger("it-ops.jobs")
+
+# 单例复用 collector：mock 的随机游走状态（上轮指标值）跨轮保持，曲线才平滑
+_collector = None
+
+
+def _top_cpu(db, metric: str = "cpu", n: int = 10, window_hours: int = 1):
+    """各设备窗口内最新 metric 值降序 TOP N（与 GET /api/overview/top 同逻辑）。"""
+    t_from = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    latest = (
+        select(DeviceMetric.device_id, func.max(DeviceMetric.ts).label("max_ts"))
+        .where(DeviceMetric.metric == metric, DeviceMetric.ts >= t_from)
+        .group_by(DeviceMetric.device_id)
+        .subquery()
+    )
+    rows = (
+        db.execute(
+            select(Device.id, Device.name, DeviceMetric.value)
+            .select_from(Device)
+            .join(latest, latest.c.device_id == Device.id)
+            .join(
+                DeviceMetric,
+                (DeviceMetric.device_id == Device.id)
+                & (DeviceMetric.ts == latest.c.max_ts)
+                & (DeviceMetric.metric == metric),
+            )
+            .order_by(DeviceMetric.value.desc())
+            .limit(n)
+        )
+        .all()
+    )
+    return [{"device_id": did, "name": name, "value": float(v)} for did, name, v in rows]
 
 
 async def run_collection() -> None:
+    global _collector
     db = SessionLocal()
     try:
         dev_ids = [i for i in db.execute(select(Device.id)).scalars()]
         if not dev_ids:
             return
-        collector = get_collector(dev_ids)
-        batch = collector.collect()
+        if _collector is None:
+            _collector = get_collector(dev_ids)
+        batch = _collector.collect()
+        if not any(batch.values()):
+            return
+
+        # 记录提交前最大告警 id，提交后取回本轮新增（id/created_at 已生成）
+        prev_max = db.scalar(select(func.max(Alert.id))) or 0
 
         for m in batch["metrics"]:
+            # aware UTC datetime（与 seed 一致；naive 字符串会被 PG 按本机时区解释，
+            # 在东八区机器上所有新数据 ts 早 8h，窗口查询查不到）
             db.add(DeviceMetric(device_id=m["device_id"], metric=m["metric"],
-                                ts=time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(m["ts"])),
+                                ts=datetime.fromtimestamp(m["ts"], tz=timezone.utc),
                                 value=m["value"]))
         for a in batch["alerts"]:
             db.add(Alert(device_id=a.get("device_id"), level=a["level"],
@@ -29,5 +81,29 @@ async def run_collection() -> None:
             if d:
                 d.status = st["status"]
         db.commit()
+
+        payload: dict = {"type": "feed_update"}
+
+        if batch["statuses"]:
+            rows = db.execute(select(Device).where(Device.id.in_(
+                [st["device_id"] for st in batch["statuses"]]))).scalars()
+            payload["statuses"] = [{"id": d.id, "name": d.name, "status": d.status} for d in rows]
+
+        if batch["alerts"]:
+            new_rows = (db.execute(select(Alert).where(Alert.id > prev_max)
+                                   .order_by(Alert.id)).scalars().all())
+            names = {d.id: d.name for d in db.execute(select(Device)).scalars()}
+            payload["alerts"] = [
+                {"id": a.id, "device_id": a.device_id,
+                 "device_name": names.get(a.device_id) if a.device_id else None,
+                 "level": a.level, "title": a.title, "detail": a.detail,
+                 "created_at": a.created_at, "acked": a.acked}
+                for a in new_rows
+            ]
+
+        if batch["metrics"]:
+            payload["top"] = {"metric": "cpu", "items": _top_cpu(db)}
+
+        await hub.broadcast(payload)
     finally:
         db.close()

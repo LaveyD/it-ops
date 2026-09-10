@@ -5,7 +5,9 @@ import { TopoEngine, fitToView } from './topo-core'
 import { api } from '../../api'
 import type { TopologyActive } from '../../types'
 
-// 大屏只读拓扑：hover 浮层（名称/IP/状态/最近告警）+ 点击 → 设备抽屉
+// 大屏只读拓扑：WS 增量（状态/新告警）+ 10s 轮询兜底（拓扑版本变更）
+// hover 浮层（名称/IP/状态/最近告警）+ 点击 → 设备抽屉
+import { useFeed } from '../../composables/useWs'
 const emit = defineEmits<{ (e: 'open-device', deviceId: string, nodeId: string): void }>()
 const box = ref<HTMLElement>()
 const active = ref<TopologyActive | null>(null)
@@ -16,19 +18,20 @@ let engine: TopoEngine | null = null
 const tip = ref({ show: false, x: 0, y: 0, nodeId: '', label: '', deviceId: '', status: '', ip: '' })
 
 let poll: ReturnType<typeof setInterval> | null = null
+let offFeed: (() => void) | null = null
 
 async function load() {
   try {
     const a = await api.topologyActive()
-    const first = !active.value
-    active.value = a
+    const changed = !active.value || active.value.id !== a.id
     if (engine) {
       engine.setDevices(a.devices)
-      if (first) {
+      if (changed) {
         engine.renderCanvas(a.canvas)
-        setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+        if (active.value) setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
       }
     }
+    active.value = a
     // 最近告警（每条 deviceId 一条，供 hover 浮层）
     try {
       const alerts = await api.alerts({ limit: '50' })
@@ -100,9 +103,24 @@ onMounted(async () => {
   })
   engine.init(null)
   await load()
-  poll = setInterval(load, 10000) // 状态轮询（WS 在 M4 接入）
+  poll = setInterval(load, 10000) // 轮询兜底：拓扑版本变更（设备状态/告警走 WS）
+  // WS 增量：状态变更 → 节点立即变色；新告警 → hover 浮层最近告警
+  offFeed = useFeed((m) => {
+    if (m.type !== 'feed_update') return
+    if (m.statuses && active.value) {
+      for (const s of m.statuses) {
+        if (active.value.devices[s.id]) active.value.devices[s.id].status = s.status
+      }
+      if (engine) engine.setDevices(active.value.devices)
+    }
+    if (m.alerts) {
+      const m2 = { ...lastAlerts.value }
+      for (const a of m.alerts) if (a.device_id && !m2[a.device_id]) m2[a.device_id] = a.title
+      lastAlerts.value = m2
+    }
+  })
 })
-onUnmounted(() => { if (poll) clearInterval(poll); engine?.dispose() })
+onUnmounted(() => { if (poll) clearInterval(poll); offFeed?.(); engine?.dispose() })
 
 // 供父级取节点名（抽屉标题）
 function nodeLabelById(id: string) {

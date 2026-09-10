@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../../api'
+import { useFeed } from '../../composables/useWs'
 import type { DeviceTopItem } from '../../types'
 import { useEChart } from '../../composables/useEChart'
 import { CHART, baseOption, axisStyle } from '../../echarts/theme'
 
 const data = ref<DeviceTopItem[]>([])
 const emit = defineEmits<{ (e: 'open-device', deviceId: string): void }>()
+let offFeed: (() => void) | null = null
 
 useEChart((c) => {
   // ECharts 横向条形：最上为最大值
@@ -35,8 +37,18 @@ useEChart((c) => {
 
 onMounted(async () => {
   try { data.value = await api.deviceTop('cpu', 10, 24) } catch (e) { console.error(e) }
+  // WS 推送：CPU TOP10 每轮采集刷新；__resync 重连后拉全量
+  offFeed = useFeed((m) => {
+    if (m.type === '__resync') {
+      api.deviceTop('cpu', 10, 24).then((d) => { data.value = d }).catch(() => { /* 忽略 */ })
+      return
+    }
+    if (m.type === 'feed_update' && m.top?.metric === 'cpu' && m.top.items?.length) {
+      data.value = m.top.items
+    }
+  })
 })
-onUnmounted(() => { /* 轮询由父级刷新 */ })
+onUnmounted(() => { offFeed?.() })
 </script>
 
 <template>

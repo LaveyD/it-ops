@@ -66,6 +66,13 @@ button { font-family: inherit; }
   background: rgba(47, 123, 255, 0.12); border: 1px solid rgba(47, 123, 255, 0.3);
 }
 .topbar .stat-chip b { color: var(--accent); }
+/* 实时连接状态指示 */
+.topbar .ws-chip { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.topbar .ws-dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7688; }
+.topbar .ws-chip.open { background: rgba(38, 208, 124, 0.12); border-color: rgba(38, 208, 124, 0.35); }
+.topbar .ws-chip.open .ws-dot { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.topbar .ws-chip.closed { background: rgba(255, 77, 79, 0.1); border-color: rgba(255, 77, 79, 0.35); }
+.topbar .ws-chip.closed .ws-dot { background: var(--crit); }
 .topbar .alert-chip { background: rgba(255, 77, 79, 0.1); border-color: rgba(255, 77, 79, 0.4); }
 .topbar .alert-chip b { color: var(--crit); }
 .topbar .nav { display: flex; gap: 6px; }

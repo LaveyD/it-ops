@@ -14,6 +14,7 @@ import LocationCard from '../components/cards/LocationCard.vue'
 import OnDutyCard from '../components/cards/OnDutyCard.vue'
 import GraphView from '../components/topology/GraphView.vue'
 import DeviceDrawer from '../components/topology/DeviceDrawer.vue'
+import { wsStatus } from '../composables/useWs'
 
 const router = useRouter()
 const overview = ref<Overview | null>(null)
@@ -79,6 +80,9 @@ onUnmounted(() => {
           未确认告警 <b>{{ overview.unacked_alerts }}</b>
         </div>
         <div class="stat-chip" v-if="overview.topology">拓扑 v{{ overview.topology.version }}</div>
+        <div class="stat-chip ws-chip" :class="wsStatus">
+          <span class="ws-dot"></span>{{ wsStatus === 'open' ? '实时' : wsStatus === 'connecting' ? '连接中' : '离线' }}
+        </div>
         <div class="clock">{{ now.toLocaleDateString('zh-CN') }} {{ now.toLocaleTimeString('zh-CN') }}</div>
       </header>
 

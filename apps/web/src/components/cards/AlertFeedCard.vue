@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../../api'
+import { useFeed } from '../../composables/useWs'
 import type { Alert } from '../../types'
 
 const alerts = ref<Alert[]>([])
 const top = ref<Alert | null>(null)
 const emit = defineEmits<{ (e: 'open-device', deviceId: string): void }>()
 let timer: ReturnType<typeof setInterval> | null = null
+let offFeed: (() => void) | null = null
 
 // 跑马灯：逐条上移
 const current = computed(() => top.value)
@@ -25,6 +27,20 @@ function tick() {
   }, 700)
 }
 
+// WS 推送：新告警立即入队 + 当前展示换新；__resync（重连后）拉全量
+function onFeed(m: any) {
+  if (m.type === '__resync') {
+    api.alerts({ limit: '30' }).then((list) => { alerts.value = [...list]; tick() }).catch(() => { /* 忽略 */ })
+    return
+  }
+  if (m.type !== 'feed_update' || !m.alerts?.length) return
+  for (const a of m.alerts) {
+    if (!alerts.value.some((x) => x.id === a.id)) alerts.value.unshift(a)
+  }
+  alerts.value = alerts.value.slice(0, 30)
+  top.value = m.alerts[0] // 最新一条顶到展示位
+}
+
 const levelText: Record<string, string> = { info: '提示', warn: '警告', crit: '严重' }
 const timeStr = (iso: string) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 
@@ -35,8 +51,9 @@ onMounted(async () => {
   } catch (e) { console.error(e) }
   timer = setInterval(tick, 4000)
   tick()
+  offFeed = useFeed(onFeed)
 })
-onUnmounted(() => { if (timer) clearInterval(timer) })
+onUnmounted(() => { if (timer) clearInterval(timer); offFeed?.() })
 </script>
 
 <template>

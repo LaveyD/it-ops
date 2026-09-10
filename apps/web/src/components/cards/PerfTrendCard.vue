@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api } from '../../api'
+import { useFeed } from '../../composables/useWs'
 import type { Device, MetricSeries } from '../../types'
 import { useEChart } from '../../composables/useEChart'
 import { CHART, baseOption, axisStyle } from '../../echarts/theme'
@@ -13,6 +14,7 @@ const withMetrics = computed(() =>
 const selected = ref<string>('')
 const series = ref<MetricSeries[]>([])
 let poll: ReturnType<typeof setInterval> | null = null
+let offFeed: (() => void) | null = null
 
 async function loadSeries() {
   if (!selected.value) return
@@ -49,8 +51,13 @@ onMounted(() => {
   selected.value = withMetrics.value[0]?.id ?? ''
   loadSeries()
   poll = setInterval(loadSeries, 30000)
+  // WS 推送：选中设备有新指标 → 立即拉最新点（增量刷新）；重连后同样补拉
+  offFeed = useFeed((m) => {
+    if (m.type === '__resync') { loadSeries(); return }
+    if (m.type === 'feed_update' && m.top?.items?.some((i: any) => i.device_id === selected.value)) loadSeries()
+  })
 })
-onUnmounted(() => { if (poll) clearInterval(poll) })
+onUnmounted(() => { if (poll) clearInterval(poll); offFeed?.() })
 </script>
 
 <template>

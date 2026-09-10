@@ -1,6 +1,7 @@
 """FastAPI 入口。"""
 import asyncio
 import logging
+import time
 
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,7 +39,7 @@ def health():
 # ===== WebSocket =====
 @app.websocket("/ws/feed")
 async def ws_feed(ws: WebSocket, token: str = Query(default="")):
-    # M1 先只校验 token 能解析；完整鉴权在 M4 收口（WS 走 query token）
+    # WS 走 query token（浏览器 WebSocket API 无法自定义握手 header）；4401 关闭表示未授权
     import jwt as _jwt
     try:
         _jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
@@ -55,21 +56,32 @@ async def ws_feed(ws: WebSocket, token: str = Query(default="")):
         hub.disconnect(ws)
 
 
-# ===== 后台 mock 任务（M4 完整化：心跳/重连/广播节奏；M1 仅跑通数据生产）=====
+# ===== 后台任务（M4）：采集广播 5s/轮 + 心跳 15s =====
 async def _mock_loop():
-    """周期性调 mock collector 写库并广播（M4 接入 hub 广播完整消息）。"""
+    """周期性采集写库并广播 feed_update（空轮不广播）。"""
     from .jobs import run_collection
     while True:
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         try:
             await run_collection()
         except Exception:
             log.exception("mock collection failed")
 
 
+async def _heartbeat_loop():
+    """服务端心跳：15s 一条 server_ping，供前端检测半开连接。"""
+    while True:
+        await asyncio.sleep(15)
+        try:
+            await hub.broadcast({"type": "server_ping", "ts": time.time()})
+        except Exception:
+            log.exception("heartbeat failed")
+
+
 @app.on_event("startup")
 async def _start():
     asyncio.create_task(_mock_loop())
+    asyncio.create_task(_heartbeat_loop())
 
 
 def main():

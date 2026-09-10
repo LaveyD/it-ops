@@ -1,11 +1,20 @@
 """SQLAlchemy ORM 模型（与 docs/02-data-model.md 一致）。"""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, Double, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
+
+
+def _utcnow() -> datetime:
+    """ORM 侧时间默认值（aware UTC）。
+
+    不能只依赖 DB server_default：alembic 迁移里 server_default='now()'
+    是字符串字面量，会被 DDL 固化为「建表时刻的常量时间戳」。
+    """
+    return datetime.now(timezone.utc)
 
 
 class Topology(Base):
@@ -18,7 +27,7 @@ class Topology(Base):
     canvas: Mapped[dict] = mapped_column(JSONB)
     version: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
 class TopologyNodeDevice(Base):
@@ -41,7 +50,7 @@ class Device(Base):
     location: Mapped[str | None] = mapped_column(Text)
     owner: Mapped[str | None] = mapped_column(Text)
     extra: Mapped[dict] = mapped_column(JSONB, default=dict)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
 class DeviceMetric(Base):
@@ -62,7 +71,7 @@ class Alert(Base):
     level: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
     detail: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default="now()")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     acked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
