@@ -51,24 +51,29 @@ Base：`/api`；认证：`Authorization: Bearer <jwt>`（除 `/api/auth/login` �
 
 `WS /ws/feed?token=*** JWT）
 
-服务端 → 客户端消息（`{type, payload}`）：
+服务端 → 客户端消息：每轮采集（5s）产生新数据后合并广播**一条** `feed_update`（空轮不广播）；另有 15s 心跳。
 
 ```jsonc
-{ "type": "metric_tick", "payload": { "device_id": "core1", "metric": "cpu", "value": 43.2, "ts": "…" } }
-{ "type": "alert",       "payload": { /* alert 对象 */ } }
-{ "type": "device_status", "payload": { "device_id": "core1", "status": "warn" } }
-{ "type": "topology_changed", "payload": { "version": 7 } }   // 编辑器保存/激活后推
+// 合并广播：字段按需出现，无对应新数据则该字段缺省
+{ "type": "feed_update",
+  "statuses": [ { "id": "dev1", "name": "核心交换机", "status": "warn" } ],   // 本轮状态变更
+  "alerts":   [ { /* AlertOut 全字段，含 device_name、id、created_at */ } ],  // 本轮新增告警
+  "top": { "metric": "cpu", "items": [ { "device_id": "dev1", "name": "…", "value": 88.5 } ] }  // CPU TOP10
+}
+{ "type": "server_ping", "ts": 1700000000 }   // 15s 心跳
 ```
 
 客户端 → 服务端：
 
 ```jsonc
-{ "type": "ping" }   // 30s 心跳；服务端回 { "type": "pong" }
+"ping"   // 15s 心跳；服务端回 { "type": "pong" }（均为纯文本帧，非 JSON 对象）
 ```
 
 约定：
-- 连接失败自动重连（指数退避 1s→30s），期间轮询兜底（overview 30s）
-- 广播经后端进程内 hub 发布（单机部署足够）；collector 后台任务写入后触发推送
+- token 无效 → 服务端以 close code `4401` 断开（前端不重连，跳登录页）
+- 连接失败自动重连（指数退避 1s→30s 封顶），收到任意消息重置退避
+- 每次（重）连接建立后前端向各组件派发 `__resync`，由其补拉快照（alerts/top/metrics），保证断网重连后状态一致
+- 广播经后端进程内 hub 发布（单机部署足够）；collector 后台任务写库提交后触发推送
 
 ## 7. 通用
 

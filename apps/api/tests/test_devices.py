@@ -79,6 +79,15 @@ def test_alert_ack(client, auth):
     assert r2.json()["acked"] is True
 
 
+def test_alerts_unacked_filter(client, auth):
+    """unacked 过滤双向语义：unacked=1 只出未确认，unacked=0 只出已确认。"""
+    r = client.get("/api/alerts", headers=auth, params={"unacked": "1", "limit": "500"})
+    assert r.status_code == 200
+    assert all(a["acked"] is False for a in r.json())
+    r0 = client.get("/api/alerts", headers=auth, params={"unacked": "0", "limit": "500"})
+    assert all(a["acked"] is True for a in r0.json())
+
+
 def test_alert_stats(client, auth):
     r = client.get("/api/alerts/stats", headers=auth, params={"days": "7"})
     assert r.status_code == 200

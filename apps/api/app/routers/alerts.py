@@ -48,7 +48,8 @@ def list_alerts(
     if level:
         stmt = stmt.where(Alert.level == level)
     if unacked is not None:
-        stmt = stmt.where(Alert.acked == unacked)
+        # unacked=1 → 只看未确认（acked=False）
+        stmt = stmt.where(Alert.acked == (not unacked))
     if device_id:
         stmt = stmt.where(Alert.device_id == device_id)
     rows = db.execute(stmt.order_by(Alert.created_at.desc()).limit(limit)).scalars().all()

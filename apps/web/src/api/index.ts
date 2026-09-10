@@ -40,6 +40,8 @@ export const api = {
     if (to) p.set('to', to)
     return request<import('../types').MetricSeries[]>(`/api/devices/${id}/metrics?${p}`)
   },
+  deviceAction: (id: string, action: string) =>
+    request<Record<string, unknown>>(`/api/devices/${id}/actions/${action}`, { method: 'POST' }),
   alerts: (q?: Record<string, string>) => {
     const s = q ? '?' + new URLSearchParams(q).toString() : ''
     return request<import('../types').Alert[]>(`/api/alerts${s}`)
