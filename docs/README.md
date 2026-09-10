@@ -15,7 +15,7 @@
 | 图表 | ECharts 5 | 暗色主题、地图/仪表盘/趋势，大屏生态最成熟 |
 | 状态 | Pinia | 页面少，够用 |
 | 后端 | Python FastAPI + SQLAlchemy 2.0 + Alembic | 读多写少 + WebSocket 实时推送；OpenAPI 自动生成 |
-| 数据库 | PostgreSQL 17 | 本机 5432，新建库 `it_ops`；拓扑 JSONB 版本化存储 |
+| 数据库 | PostgreSQL 17 | 本机 23432（17/main 集群；5432 是旧 Docker 容器勿用），库 `it_ops`；拓扑 JSONB 版本化存储 |
 | 实时 | WebSocket（FastAPI 原生） | 告警/指标/状态推送 |
 | 认证 | 内置管理员账号（JWT，单账号，无账号体系） | 后期可扩展 |
 

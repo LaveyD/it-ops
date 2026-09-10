@@ -20,5 +20,5 @@ cd apps/api && uv sync && alembic upgrade head && uv run python -m app.seed
 uv run uvicorn app.main:app --reload --port 8100
 
 # 前端（apps/web）
-cd apps/web && npm install && npm run dev   # :5173，代理到 :8100
+cd apps/web && npm install && npm run dev   # :5174，代理到 :8110
 ```

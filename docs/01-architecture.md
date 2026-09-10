@@ -10,10 +10,10 @@
 │  - ECharts 卡片               │◄──────►│  - mock 数据生成器             │
 └─────────────────────────────┘        │  - collector 预留接口          │
         ▲ Nginx 托管(生产)               └──────────────┬───────────────┘
-        │ dev: vite :5173 (proxy /api,/ws → :8100)      │ SQLAlchemy
+        │ dev: vite :5174 (proxy /api,/ws → :8110)      │ SQLAlchemy
                                                 ┌───────▼────────┐
                                                 │ PostgreSQL 17   │
-                                                │ db: it_ops :5432│
+                                                │ db: it_ops :23432│
                                                 └────────────────┘
 ```
 
@@ -42,7 +42,7 @@ it-ops/
 │   │   │   ├── theme/                  # 暗色主题 CSS 变量
 │   │   │   └── main.ts
 │   │   ├── index.html
-│   │   ├── vite.config.ts              # dev proxy /api,/ws → localhost:8100
+│   │   ├── vite.config.ts              # dev proxy /api,/ws → localhost:8110
 │   │   ├── tsconfig.json
 │   │   └── package.json
 │   └── api/                          # 后端
@@ -77,20 +77,20 @@ it-ops/
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| 前端 dev | 5173 | Vite 默认，proxy 到 8100 |
-| 后端 dev | 8100 | 避开 8030/8031/8032/9000/5432 已占用 |
-| PostgreSQL | 5432（复用） | 库 `it_ops`，用户 `it_ops` |
-| 生产 | Nginx 静态托管 apps/web/dist + 反代 /api、/ws → 8100 | 端口待定（建议 8040 段，实施时定） |
+| 前端 dev | 5174 | Vite 默认，proxy 到 8110 |
+| 后端 dev | 8110 | 避开已占用端口（8100 为 Hermes Web UI 自身） |
+| PostgreSQL | 23432（本机 17/main） | 库 `it_ops`，用户 `it_ops`。注意 5432 是旧 Docker 容器，勿用 |
+| 生产 | Nginx 静态托管 apps/web/dist + 反代 /api、/ws → 8110 | 端口待定（建议 8040 段，实施时定） |
 
 ## 4. 环境变量（apps/api/.env）
 
 ```
-DATABASE_URL=postgresql+psycopg://it_ops:***@127.0.0.1:5432/it_ops
+DATABASE_URL=postgresql+psycopg://it_ops:itops2026@127.0.0.1:23432/it_ops
 JWT_SECRET=<随机>
 ADMIN_USER=admin
 ADMIN_PASSWORD=<随机，内置管理员>
 HOST=0.0.0.0
-PORT=8100
+PORT=8110
 ```
 
 ## 5. collector / operator 预留设计

@@ -1,0 +1,102 @@
+:root {
+  --bg: #0a1220;
+  --bg-2: #0f1b30;
+  --card: rgba(20, 34, 60, 0.72);
+  --border: rgba(90, 130, 200, 0.25);
+  --text: #d7e3f4;
+  --text-dim: #7d93b2;
+  --accent: #2f7bff;
+  --ok: #22c55e;
+  --warn: #faad14;
+  --crit: #ff4d4f;
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: radial-gradient(1200px 600px at 70% -10%, #14264a 0%, var(--bg) 55%);
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+#app { width: 100vw; height: 100vh; }
+
+a { color: var(--accent); text-decoration: none; }
+button { font-family: inherit; }
+
+/* 登录页 */
+.login-wrap {
+  height: 100vh; display: flex; align-items: center; justify-content: center;
+}
+.login-card {
+  width: 380px; padding: 40px 36px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  backdrop-filter: blur(8px);
+}
+.login-card h1 { font-size: 22px; margin-bottom: 6px; }
+.login-card .sub { color: var(--text-dim); font-size: 13px; margin-bottom: 26px; }
+.login-card input {
+  width: 100%; padding: 11px 14px; margin-bottom: 14px;
+  background: rgba(8, 16, 32, 0.8); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 14px; outline: none;
+}
+.login-card input:focus { border-color: var(--accent); }
+.login-card button {
+  width: 100%; padding: 12px; border: none; border-radius: 8px;
+  background: var(--accent); color: #fff; font-size: 15px; cursor: pointer;
+}
+.login-card button:hover { filter: brightness(1.1); }
+.login-err { color: var(--crit); font-size: 13px; margin-bottom: 10px; min-height: 18px; }
+
+/* 大屏布局 */
+.dash { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
+.topbar {
+  display: flex; align-items: center; gap: 20px; padding: 0 24px;
+  background: rgba(10, 20, 40, 0.6); border-bottom: 1px solid var(--border);
+}
+.topbar .logo { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+.topbar .logo span { color: var(--accent); }
+.topbar .clock { color: var(--text-dim); font-size: 13px; margin-left: auto; }
+.topbar .stat-chip {
+  font-size: 13px; padding: 5px 12px; border-radius: 999px;
+  background: rgba(47, 123, 255, 0.12); border: 1px solid rgba(47, 123, 255, 0.3);
+}
+.topbar .stat-chip b { color: var(--accent); }
+.topbar .nav { display: flex; gap: 6px; }
+.topbar .nav a {
+  font-size: 13px; padding: 6px 14px; border-radius: 8px; color: var(--text-dim);
+}
+.topbar .nav a.active { background: rgba(47, 123, 255, 0.16); color: var(--text); }
+
+.dash-body { display: grid; grid-template-columns: 340px 1fr 340px; gap: 14px; padding: 14px; min-height: 0; }
+.col { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; }
+.center { min-height: 0; display: flex; }
+
+/* 卡片壳 */
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; flex-shrink: 0;
+}
+.card .head {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.card .head .t { font-size: 14px; font-weight: 600; }
+.card .head .t::before {
+  content: ""; display: inline-block; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--accent); margin-right: 8px; vertical-align: -2px;
+}
+.card .head .time { font-size: 11px; color: var(--text-dim); }
+.chart { width: 100%; height: 180px; }
+
+/* 拓扑占位 */
+.topo-box {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--text-dim); gap: 10px; border: 1px dashed var(--border); border-radius: 12px;
+}
+.topo-box b { color: var(--text); font-size: 16px; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(90, 130, 200, 0.3); border-radius: 3px; }
