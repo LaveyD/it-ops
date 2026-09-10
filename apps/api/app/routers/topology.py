@@ -108,8 +108,13 @@ def activate(topo_id: int, db: Session = Depends(get_db), user: str = Depends(ge
     topo = db.get(Topology, topo_id)
     if topo is None:
         raise HTTPException(404, "版本不存在")
+    # 先清旧 active 再设新 active：两条 UPDATE 必须分两个批次执行，
+    # 否则 SQLAlchemy 合并为单次 executemany，SET TRUE 可能先于 SET FALSE，
+    # 撞部分唯一索引 ux_topology_active（仅 is_active=TRUE 唯一）
     for t in db.execute(select(Topology).where(Topology.is_active.is_(True))).scalars():
-        t.is_active = False
+        if t.id != topo.id:
+            t.is_active = False
+    db.flush()
     topo.is_active = True
     db.commit()
     db.refresh(topo)

@@ -64,12 +64,43 @@ def test_topology_save_new_version(client, auth):
     assert r.json()["version"] == base["version"] + 1
     assert r.json()["is_active"] is False  # 已有生效版本，不应自动激活
     # 清理测试版本（保留 active 不变）
+    _delete_topology(new_id)
+
+
+def test_topology_activate_switches_active(client, auth):
+    """激活另一版本：双 UPDATE 分批复行，不撞部分唯一索引 ux_topology_active。"""
+    base = client.get("/api/topology/active", headers=auth).json()
+    canvas = {
+        "nodes": [{"id": "a1", "label": "A", "type": "server", "color": "1,2,3",
+                   "x": 0, "y": 0, "size": 60, "properties": {}}],
+        "links": [],
+    }
+    v2 = client.post("/api/topology", headers=auth, json={"name": "pytest 激活-v2", "canvas": canvas}).json()
+    v3 = client.post("/api/topology", headers=auth, json={"name": "pytest 激活-v3", "canvas": canvas}).json()
+    try:
+        # 激活 v3（当前 active 是 base）
+        r = client.post(f"/api/topology/{v3['id']}/activate", headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.json()["is_active"] is True
+        # 再切回 v2：连续两次 activate 都必须成功
+        r = client.post(f"/api/topology/{v2['id']}/activate", headers=auth)
+        assert r.status_code == 200, r.text
+        active = client.get("/api/topology/active", headers=auth).json()
+        assert active["id"] == v2["id"]
+    finally:
+        # 恢复 base 生效并清理测试版本
+        client.post(f"/api/topology/{base['id']}/activate", headers=auth)
+        _delete_topology(v2["id"])
+        _delete_topology(v3["id"])
+
+
+def _delete_topology(topo_id: int):
     from sqlalchemy import delete
     from app.db import SessionLocal
     from app.models import Topology
     db = SessionLocal()
     try:
-        db.execute(delete(Topology).where(Topology.id == new_id))
+        db.execute(delete(Topology).where(Topology.id == topo_id))
         db.commit()
     finally:
         db.close()

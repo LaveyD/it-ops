@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '../api'
 import type { Device, Overview } from '../types'
 import ChartCard from '../components/ChartCard.vue'
@@ -11,7 +12,10 @@ import AlertFeedCard from '../components/cards/AlertFeedCard.vue'
 import TopNCard from '../components/cards/TopNCard.vue'
 import LocationCard from '../components/cards/LocationCard.vue'
 import OnDutyCard from '../components/cards/OnDutyCard.vue'
+import GraphView from '../components/topology/GraphView.vue'
+import DeviceDrawer from '../components/topology/DeviceDrawer.vue'
 
+const router = useRouter()
 const overview = ref<Overview | null>(null)
 const devices = ref<Device[]>([])
 const now = ref(new Date())
@@ -19,6 +23,17 @@ const scale = ref(1)
 let clockTimer: ReturnType<typeof setInterval> | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let onResize: (() => void) | null = null
+
+// 设备抽屉（统一穿透入口）
+const gv = ref<InstanceType<typeof GraphView> | null>(null)
+const drawer = ref({ open: false, deviceId: null as string | null, nodeId: '' })
+function openDevice(deviceId: string | null, nodeId: string) {
+  drawer.value = { open: true, deviceId, nodeId }
+}
+function gotoEditor(nodeId: string) {
+  drawer.value.open = false
+  router.push({ path: '/editor', query: { node: nodeId } })
+}
 
 // 大屏 scale-to-fit：固定 1920×1080 画布，按视口等比缩放居中（非 16:9 留黑边）
 function fit() {
@@ -84,22 +99,24 @@ onUnmounted(() => {
         </ChartCard>
       </div>
 
-      <!-- 中：拓扑（M3 接 GraphView） -->
+      <!-- 中：拓扑（GraphView 只读 + 四态渲染 + 点击穿透） -->
       <div class="center">
-        <div class="topo-box">
+        <div class="topo-head">
           <b>网络拓扑</b>
-          <p>GraphView 组件将在 M3 接入（3D 图标 + 分组 + 告警着色 + 点击穿透）</p>
-          <p class="dim">当前版本：{{ overview.topology?.name }} v{{ overview.topology?.version }}</p>
+          <span class="dim" v-if="overview.topology">{{ overview.topology.name }} v{{ overview.topology.version }} · 点击节点查看设备</span>
+        </div>
+        <div class="topo-canvas">
+          <GraphView ref="gv" @open-device="openDevice" />
         </div>
       </div>
 
       <!-- 右列 -->
       <div class="col">
         <ChartCard title="实时告警" extra="4s 滚动">
-          <AlertFeedCard />
+          <AlertFeedCard @open-device="(id) => openDevice(id, '')" />
         </ChartCard>
         <ChartCard title="CPU TOP 10" extra="近 24h">
-          <TopNCard />
+          <TopNCard @open-device="(id) => openDevice(id, '')" />
         </ChartCard>
         <ChartCard title="机房分布">
           <LocationCard :devices="devices" />
@@ -110,6 +127,16 @@ onUnmounted(() => {
       </div>
     </div>
     </div>
+
+    <!-- 设备抽屉（穿透入口，fixed 相对视口；必须在 transform 的 .stage 之外）-->
+    <DeviceDrawer
+      :device-id="drawer.deviceId"
+      :node-id="drawer.nodeId"
+      :node-label="drawer.nodeId ? (gv?.nodeLabelById(drawer.nodeId) || '') : ''"
+      :open="drawer.open"
+      @close="drawer.open = false"
+      @goto-editor="gotoEditor"
+    />
   </div>
   <div v-else class="stage-wrap"><p class="loading">加载数据中…</p></div>
 </template>

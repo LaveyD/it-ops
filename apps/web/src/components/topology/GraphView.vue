@@ -1,0 +1,148 @@
+<script setup lang="ts">
+// @ts-nocheck
+import { onMounted, onUnmounted, ref } from 'vue'
+import { TopoEngine, fitToView } from './topo-core'
+import { api } from '../../api'
+import type { TopologyActive } from '../../types'
+
+// 大屏只读拓扑：hover 浮层（名称/IP/状态/最近告警）+ 点击 → 设备抽屉
+const emit = defineEmits<{ (e: 'open-device', deviceId: string, nodeId: string): void }>()
+const box = ref<HTMLElement>()
+const active = ref<TopologyActive | null>(null)
+const lastAlerts = ref<Record<string, string>>({}) // deviceId -> 最近一条告警 title
+let engine: TopoEngine | null = null
+
+// hover 浮层状态
+const tip = ref({ show: false, x: 0, y: 0, nodeId: '', label: '', deviceId: '', status: '', ip: '' })
+
+let poll: ReturnType<typeof setInterval> | null = null
+
+async function load() {
+  try {
+    const a = await api.topologyActive()
+    const first = !active.value
+    active.value = a
+    if (engine) {
+      engine.setDevices(a.devices)
+      if (first) {
+        engine.renderCanvas(a.canvas)
+        setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+      }
+    }
+    // 最近告警（每条 deviceId 一条，供 hover 浮层）
+    try {
+      const alerts = await api.alerts({ limit: '50' })
+      const m: Record<string, string> = {}
+      for (const al of alerts) if (al.device_id && !m[al.device_id]) m[al.device_id] = al.title
+      lastAlerts.value = m
+    } catch (e) { /* ignore */ }
+  } catch (e) { console.error(e) }
+}
+
+function onNodeClick(node) {
+  const did = node.properties && node.properties.deviceId
+  if (did && active.value?.devices[did]) {
+    emit('open-device', did, node.id)
+  } else {
+    emit('open-device', null, node.id) // 未纳管 → 抽屉空态
+  }
+}
+
+// hover 拾取：复刻引擎事件管线坐标换算（device px → scene 数据坐标）
+function pickNode(e: MouseEvent) {
+  const g = engine?.graph
+  if (!g || !g.scene) return null
+  const rect = box.value!.getBoundingClientRect()
+  const scene = g.scene
+  let x = (e.clientX - rect.left) * (g.stage.pixelRatio || 1)
+  let y = (e.clientY - rect.top) * (g.stage.pixelRatio || 1)
+  try {
+    x = x / scene.scaleX
+    y = y / scene.scaleY
+    const off = scene.getOffsetTranslate()
+    x -= off.translateX
+    y -= off.translateY
+  } catch (err) { return null }
+  if (scene.displayElements) {
+    for (const n of scene.displayElements.nodes || []) {
+      if (n.visible && n.isInBound(x, y)) return n
+    }
+  }
+  return null
+}
+function onMove(e: MouseEvent) {
+  const n = pickNode(e)
+  if (!n) { tip.value.show = false; return }
+  const did = n.properties && n.properties.deviceId
+  const dev = active.value?.devices[did]
+  const rect = box.value!.getBoundingClientRect()
+  tip.value = {
+    show: true,
+    x: Math.min(e.clientX - rect.left + 14, rect.width - 210),
+    y: Math.min(e.clientY - rect.top + 14, rect.height - 120),
+    nodeId: n.id, label: n.label, deviceId: did || '',
+    status: dev ? dev.status : 'unmanaged', ip: dev ? (dev.ip || '—') : '—',
+  }
+}
+
+onMounted(async () => {
+  const waitEngine = () => new Promise<void>((res) => {
+    if (window.VisGraph) return res()
+    let n = 0
+    const t = setInterval(() => { if (window.VisGraph || ++n > 100) { clearInterval(t); res() } }, 100)
+  })
+  await waitEngine()
+  engine = new TopoEngine(box.value!, {
+    dark: true,
+    readOnly: true,
+    onNodeClick,
+    onEmptyClick: () => { tip.value.show = false },
+  })
+  engine.init(null)
+  await load()
+  poll = setInterval(load, 10000) // 状态轮询（WS 在 M4 接入）
+})
+onUnmounted(() => { if (poll) clearInterval(poll); engine?.dispose() })
+
+// 供父级取节点名（抽屉标题）
+function nodeLabelById(id: string) {
+  return active.value?.canvas.nodes.find((n) => n.id === id)?.label || id
+}
+// 调试/测试：模拟点击某节点（走 onNodeClick → open-device）
+function clickNode(id: string) {
+  const n = active.value?.canvas.nodes.find((x) => x.id === id)
+  if (n) onNodeClick(n)
+}
+defineExpose({ nodeLabelById, clickNode })
+
+const statusText: Record<string, string> = { normal: '正常', warn: '警告', alert: '严重', unmanaged: '未纳管' }
+</script>
+
+<template>
+  <div ref="box" class="gv" @mousemove="onMove" @mouseleave="tip.show = false">
+    <div v-if="tip.show" class="tip" :style="{ left: tip.x + 'px', top: tip.y + 'px' }">
+      <div class="tip-name">{{ tip.label }} <span :class="'s-' + tip.status">{{ statusText[tip.status] }}</span></div>
+      <div v-if="tip.deviceId" class="tip-row">IP: {{ tip.ip }}</div>
+      <div v-if="tip.deviceId && lastAlerts[tip.deviceId]" class="tip-row alert">⚠ {{ lastAlerts[tip.deviceId] }}</div>
+      <div v-else-if="!tip.deviceId" class="tip-row dim">该节点未关联设备</div>
+      <div class="tip-row dim">点击查看设备详情</div>
+    </div>
+    <div v-if="!active" class="loading">拓扑加载中…</div>
+  </div>
+</template>
+
+<style scoped>
+.gv { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.tip {
+  position: absolute; z-index: 10; width: 200px; pointer-events: none;
+  background: rgba(10, 20, 40, 0.95); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+.tip-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.tip-row { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.tip-row.alert { color: var(--warn); }
+.tip-row.dim { color: var(--text-dim); opacity: .7; }
+.s-normal { color: var(--ok); } .s-warn { color: var(--warn); }
+.s-alert { color: var(--crit); } .s-unmanaged { color: var(--text-dim); }
+.loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+</style>

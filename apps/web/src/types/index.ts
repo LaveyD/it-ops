@@ -98,6 +98,14 @@ export interface TopoCanvas {
   groups?: Array<Record<string, unknown>>
 }
 
+export interface TopologyVersion {
+  id: number
+  name: string
+  version: number
+  is_active: boolean
+  updated_at: string
+}
+
 export interface TopologyActive {
   id: number
   name: string

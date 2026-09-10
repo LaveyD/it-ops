@@ -5,10 +5,16 @@ import type { Alert } from '../../types'
 
 const alerts = ref<Alert[]>([])
 const top = ref<Alert | null>(null)
+const emit = defineEmits<{ (e: 'open-device', deviceId: string): void }>()
 let timer: ReturnType<typeof setInterval> | null = null
 
 // 跑马灯：逐条上移
 const current = computed(() => top.value)
+
+function openCurrent() {
+  const a = current.value
+  if (a && a.device_id) emit('open-device', a.device_id)
+}
 
 function tick() {
   if (!alerts.value.length) return
@@ -35,7 +41,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 <template>
   <div class="feed">
-    <div class="slot" v-if="current">
+    <div class="slot" v-if="current" @click="openCurrent" :class="{ clickable: current.device_id }">
       <span class="lv" :class="current.level">{{ levelText[current.level] }}</span>
       <div class="info">
         <div class="title">{{ current.title }}</div>
@@ -61,6 +67,8 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
   display: flex; gap: 10px; padding: 10px 12px; border-radius: 8px;
   background: rgba(8, 16, 32, 0.5); border: 1px solid var(--border);
 }
+.slot.clickable { cursor: pointer; }
+.slot.clickable:hover { border-color: var(--accent); }
 .slot.empty { justify-content: center; color: var(--text-dim); font-size: 12px; border-style: dashed; }
 .lv {
   flex-shrink: 0; width: 34px; height: 34px; border-radius: 8px;

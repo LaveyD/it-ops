@@ -120,8 +120,10 @@ def seed(force: bool = False) -> None:
         if has_topo and not force:
             print("已存在拓扑，跳过拓扑种子（force=True 可重建）")
         else:
+            # force 重建：删除旧拓扑版本（topology_node_device 由 FK ondelete CASCADE 联动清理）
             for t in db.execute(select(Topology)).scalars():
-                t.is_active = False
+                db.delete(t)
+            db.flush()
             topo = Topology(name="默认拓扑", canvas=canvas, version=1, is_active=True)
             db.add(topo)
             db.flush()
