@@ -28,7 +28,9 @@ async function load() {
       engine.setDevices(a.devices)
       if (changed) {
         engine.renderCanvas(a.canvas)
-        if (active.value) setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+        // 首次加载（active 尚为 null）或拓扑版本变更 → 重新自适应缩放居中，
+        // 保证首屏就铺满并居中，而不是停在默认的左上角视图。
+        setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
       }
     }
     active.value = a

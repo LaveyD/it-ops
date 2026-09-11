@@ -477,7 +477,16 @@ export class TopoEngine {
     const g = this.graph
     try {
       if (g.scene) {
-        g.scene.dragable = !readOnly          // 禁止空白拖动（只读）
+        // 空白处拖动 = 平移视图（只读大屏也允许，方便拖动查看）。
+        g.scene.dragable = true
+        if (readOnly && g.scene.dragElements && !g.scene._roGuard) {
+          // 只读：禁掉“节点/分组被拖拽移动”这条路径。
+          // 引擎里空白平移走 mousedragHandler 的另一分支（translateX/translateY），
+          // 与 dragElements 无关，所以平移仍可用；而分组动画会异步把成员节点的
+          // dragable 复位为 true，光靠逐个 node.dragable=false 挡不住，故直接短路。
+          g.scene._roGuard = true
+          g.scene.dragElements = function () {}
+        }
       }
       ;(g.nodes || []).forEach((n) => { n.dragable = !readOnly })
       ;(g.links || []).forEach((l) => { try { l.dragable = !readOnly } catch (e) { /* ignore */ } })

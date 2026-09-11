@@ -20,10 +20,8 @@ const router = useRouter()
 const overview = ref<Overview | null>(null)
 const devices = ref<Device[]>([])
 const now = ref(new Date())
-const scale = ref(1)
 let clockTimer: ReturnType<typeof setInterval> | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
-let onResize: (() => void) | null = null
 
 // 设备抽屉（统一穿透入口）
 const gv = ref<InstanceType<typeof GraphView> | null>(null)
@@ -34,11 +32,6 @@ function openDevice(deviceId: string | null, nodeId: string) {
 function gotoEditor(nodeId: string) {
   drawer.value.open = false
   router.push({ path: '/editor', query: { node: nodeId } })
-}
-
-// 大屏 scale-to-fit：固定 1920×1080 画布，按视口等比缩放居中（非 16:9 留黑边）
-function fit() {
-  scale.value = Math.min(innerWidth / 1920, innerHeight / 1080)
 }
 
 async function load() {
@@ -53,22 +46,18 @@ async function load() {
 
 onMounted(() => {
   load()
-  fit()
-  onResize = fit
-  window.addEventListener('resize', onResize)
   clockTimer = setInterval(() => (now.value = new Date()), 1000)
   pollTimer = setInterval(load, 30000)
 })
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
   if (pollTimer) clearInterval(pollTimer)
-  if (onResize) window.removeEventListener('resize', onResize)
 })
 </script>
 
 <template>
   <div class="stage-wrap" v-if="overview">
-    <div class="stage" :style="{ transform: `scale(${scale})` }">
+    <div class="stage">
       <header class="topbar">
         <div class="logo">IT 运维<span>大屏</span></div>
         <div class="nav">
@@ -146,15 +135,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* scale-to-fit：外层铺满视口居中，内层固定 1920×1080 画布等比缩放 */
+/* 流式布局：宽度跟随视口，内容超高时整页滚动（不再 scale，避免 canvas 被 GPU 缩放模糊 + 两侧留白） */
 .stage-wrap {
-  width: 100vw; height: 100vh; overflow: hidden;
-  display: flex; align-items: center; justify-content: center; background: var(--bg);
+  width: 100vw; height: 100vh; overflow-y: auto; overflow-x: hidden;
 }
 .stage {
-  width: 1920px; height: 1080px; flex-shrink: 0;
-  transform-origin: center center;
-  display: grid; grid-template-rows: 56px 1fr;
+  width: 100%; min-height: 100%;
+  display: flex; flex-direction: column;
   background: radial-gradient(1400px 700px at 70% -10%, #14264a 0%, var(--bg) 55%);
 }
 .loading { padding: 40px; color: var(--text-dim); }

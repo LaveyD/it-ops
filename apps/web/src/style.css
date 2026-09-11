@@ -14,7 +14,7 @@
   background: var(--bg);
 }
 
-/* 大屏采用 scale-to-fit 固定画布（见 Dashboard.vue .stage），无需 rem 缩放 */
+/* 大屏流式布局：宽度跟随视口，内容超高时整页滚动（见 Dashboard.vue .stage-wrap） */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -53,10 +53,13 @@ button { font-family: inherit; }
 .login-card button:hover { filter: brightness(1.1); }
 .login-err { color: var(--crit); font-size: 13px; margin-bottom: 10px; min-height: 18px; }
 
-/* 大屏布局：顶栏 56px + 三列 320/1fr/320（.stage 固定 1920×1080，scale-to-fit） */
+/* 大屏流式布局：顶栏 56px（sticky）+ 三列 320/1fr/320，宽度跟随视口，超高整页滚动 */
 .topbar {
   display: flex; align-items: center; gap: 20px; padding: 0 24px;
-  background: rgba(10, 20, 40, 0.6); border-bottom: 1px solid var(--border);
+  height: 56px; flex-shrink: 0;
+  background: rgba(10, 20, 40, 0.92); backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 30;
 }
 .topbar .logo { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
 .topbar .logo span { color: var(--accent); }
@@ -83,10 +86,10 @@ button { font-family: inherit; }
 
 .dash-body {
   display: grid; grid-template-columns: 320px 1fr 320px;
-  gap: 14px; padding: 14px; min-height: 0;
+  gap: 14px; padding: 14px; flex: 1;
 }
-.col { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; padding-right: 2px; }
-.center { min-height: 0; display: flex; position: relative; }
+.col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.center { min-height: 560px; display: flex; position: relative; }
 
 /* 中部拓扑：标题条 + 画布 */
 .topo-head {
