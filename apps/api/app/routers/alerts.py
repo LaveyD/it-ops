@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Alert, Device
+from ..models import Alert, Device, User
 from ..routers.auth import get_current_user
 from ..schemas import AlertDailyCount, AlertOut
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
 
 @router.get("/stats", response_model=list[AlertDailyCount])
-def alert_stats(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def alert_stats(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """近 N 天按天 × 等级聚合（堆叠柱数据源），缺 0 的天补零。"""
     today = datetime.now(timezone.utc).date()
     t_from = datetime.combine(today - timedelta(days=days - 1), datetime.min.time(), tzinfo=timezone.utc)
@@ -42,7 +42,7 @@ def list_alerts(
     device_id: str | None = None,
     limit: int = Query(50, le=500),
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = select(Alert)
     if level:
@@ -63,7 +63,7 @@ def list_alerts(
 
 
 @router.post("/{alert_id}/ack", response_model=AlertOut)
-def ack(alert_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def ack(alert_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     a = db.get(Alert, alert_id)
     if a is None:
         raise HTTPException(404, "告警不存在")

@@ -3,12 +3,15 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
+import { useAuthStore } from '../store/auth'
 import MetricPanel from '../components/MetricPanel.vue'
 import { useFeed } from '../composables/useWs'
 import { wsStatus } from '../composables/useWs'
 import type { DeviceDetail as Detail, Alert } from '../types'
 
 const route = useRoute()
+const auth = useAuthStore()
+const isViewer = computed(() => auth.role === 'viewer')
 const id = computed(() => route.params.id as string)
 const device = ref<Detail | null>(null)
 const alerts = ref<Alert[]>([])
@@ -62,6 +65,7 @@ async function doAction(action: string) {
 // WS：该设备有新指标（TOP10 出现）→ 重拉曲线；重连 → 全量补拉
 let offFeed: (() => void) | null = null
 onMounted(() => {
+  auth.ensureMe()
   load()
   offFeed = useFeed((m) => {
     if (m.type === '__resync') { load(); return }
@@ -76,8 +80,8 @@ onUnmounted(() => offFeed?.())
     <header class="topbar">
       <div class="logo">IT 运维<span>大屏</span></div>
       <div class="nav">
-        <router-link to="/">总览</router-link>
-        <router-link to="/editor">拓扑编辑</router-link>
+        <router-link to="/dashboard">总览</router-link>
+        <router-link to="/topology" v-if="!isViewer">拓扑编辑</router-link>
         <a class="active">设备详情</a>
       </div>
       <div class="stat-chip ws-chip" :class="wsStatus">
@@ -105,7 +109,8 @@ onUnmounted(() => offFeed?.())
             拓扑关联：
             <router-link
               v-for="r in device.referenced_by" :key="r.topology_id + '-' + r.node_id"
-              class="ref-chip" :to="`/editor?node=${encodeURIComponent(r.node_id)}`"
+              v-show="!isViewer"
+              class="ref-chip" :to="`/topology?node=${encodeURIComponent(r.node_id)}`"
               :title="'在编辑器中查看节点 ' + r.node_label">
               {{ r.topology_name }} · {{ r.node_label }} →
             </router-link>

@@ -312,8 +312,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); engine?.di
     <header class="topbar">
       <div class="logo">IT 运维<span>拓扑编辑器</span></div>
       <div class="nav">
-        <router-link to="/">总览</router-link>
-        <router-link to="/editor" class="active">拓扑编辑</router-link>
+        <router-link to="/dashboard">总览</router-link>
       </div>
       <div class="topbar-right">
         <span v-if="dirty" class="dirty">● 未保存</span>

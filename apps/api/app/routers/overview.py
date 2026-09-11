@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Alert, BizSystem, Device, DeviceMetric, Topology
+from ..models import Alert, BizSystem, Device, DeviceMetric, Topology, User
 from ..routers.auth import get_current_user
 from ..schemas import BizSystemOut, DeviceTopItem, OverviewOut
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/overview", tags=["overview"])
 
 
 @router.get("", response_model=OverviewOut)
-def overview(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def overview(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     device_count = int(db.scalar(select(func.count()).select_from(Device)) or 0)
     abnormal = int(db.scalar(select(func.count()).select_from(Device).where(Device.status != "normal")) or 0)
     online_rate = round((device_count - abnormal) / device_count, 4) if device_count else 1.0
@@ -44,7 +44,7 @@ def device_top(
     n: int = Query(10, ge=1, le=50),
     window_hours: int = Query(1, ge=1, le=72),
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """各设备最近一条指定指标值降序 TOP N（卡片⑥数据源）。"""
     t_from = datetime.now(timezone.utc) - timedelta(hours=window_hours)

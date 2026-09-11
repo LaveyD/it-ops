@@ -4,7 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Device, Topology, TopologyNodeDevice
+from ..models import Device, Topology, TopologyNodeDevice, User
 from ..routers.auth import get_current_user
 from ..schemas import TopologySaveReq, TopologyVersionItem
 
@@ -43,7 +43,7 @@ def _node_device_ids(canvas: dict) -> dict[str, str]:
 
 
 @router.get("/active")
-def get_active(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def get_active(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     topo = db.scalar(select(Topology).where(Topology.is_active.is_(True)))
     if topo is None:
         raise HTTPException(404, "暂无生效拓扑")
@@ -54,12 +54,12 @@ def get_active(db: Session = Depends(get_db), user: str = Depends(get_current_us
 
 
 @router.get("/versions", response_model=list[TopologyVersionItem])
-def list_versions(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def list_versions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return db.execute(select(Topology).order_by(Topology.id.desc())).scalars().all()
 
 
 @router.get("/{topo_id}")
-def get_version(topo_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def get_version(topo_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     topo = db.get(Topology, topo_id)
     if topo is None:
         raise HTTPException(404, "版本不存在")
@@ -68,7 +68,7 @@ def get_version(topo_id: int, db: Session = Depends(get_db), user: str = Depends
 
 
 @router.post("", response_model=TopologyVersionItem)
-def save_topology(req: TopologySaveReq, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def save_topology(req: TopologySaveReq, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     errs = _validate_canvas(req.canvas)
     if errs:
         raise HTTPException(422, {"detail": "canvas 校验失败", "errors": errs})
@@ -104,7 +104,7 @@ def save_topology(req: TopologySaveReq, db: Session = Depends(get_db), user: str
 
 
 @router.post("/{topo_id}/activate", response_model=TopologyVersionItem)
-def activate(topo_id: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def activate(topo_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     topo = db.get(Topology, topo_id)
     if topo is None:
         raise HTTPException(404, "版本不存在")

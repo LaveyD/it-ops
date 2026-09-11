@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../store/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const form = reactive({ username: 'admin', password: '' })
 const err = ref('')
@@ -14,7 +15,13 @@ async function doLogin() {
   loading.value = true
   try {
     await auth.login(form.username, form.password)
-    router.push('/')
+    const redirect = route.query.redirect as string | undefined
+    if (redirect && redirect !== '/') {
+      router.push(redirect)
+    } else {
+      // 按角色分流：viewer → 大屏，其余 → 后台
+      router.push(auth.role === 'viewer' ? '/dashboard' : '/admin')
+    }
   } catch (e: unknown) {
     err.value = e instanceof Error ? e.message : '登录失败'
   } finally {

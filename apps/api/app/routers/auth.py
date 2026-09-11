@@ -1,37 +1,68 @@
-"""认证路由：登录 + 当前用户。"""
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import ValidationError
+"""认证路由：登录 + 当前用户 + 大屏令牌。"""
+import secrets
 
-import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from ..config import get_settings
-from ..security import create_token, decode_token, verify_credentials
-from ..schemas import LoginReq, LoginResp, MeResp
+from .. import audit
+from ..db import get_db
+from ..security import authenticate, create_token, get_current_user, hash_password
+from ..models import User
+from ..schemas import LoginReq, LoginResp, MeResp, ScreenTokenResp
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-bearer = HTTPBearer(auto_error=False)
+
+SCREEN_USER = "screen"  # 内置大屏只读账号（viewer），大屏令牌以它签发
 
 
-def get_current_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:
-    """全局依赖：校验 JWT，返回用户名。"""
-    if creds is None:
-        raise HTTPException(401, "未提供凭证")
-    try:
-        payload = decode_token(creds.credentials)
-    except (jwt.PyJWTError, ValidationError):
-        raise HTTPException(401, "凭证无效或已过期")
-    return payload.get("sub", "")
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
+
+def _ensure_screen_account(db: Session) -> None:
+    """确保内置大屏账号存在（role=viewer，随机密码不可密码登录）。幂等。"""
+    u = db.scalar(select(User).where(User.username == SCREEN_USER))
+    if u is None:
+        db.add(User(username=SCREEN_USER, password_hash=hash_password(secrets.token_urlsafe(24)),
+                    display_name="大屏只读（内置）", role="viewer"))
+        db.commit()
 
 
 @router.post("/login", response_model=LoginResp)
-def login(req: LoginReq):
-    if not verify_credentials(req.username, req.password):
+def login(req: LoginReq, request: Request, db: Session = Depends(get_db)):
+    user = authenticate(db, req.username, req.password)
+    if user is None:
+        audit.write_audit(req.username, "login_failed", ip=_client_ip(request))
         raise HTTPException(401, "用户名或密码错误")
-    s = get_settings()
-    return LoginResp(token=create_token(req.username), expires_in=s.jwt_expire_minutes * 60)
+    token, expires_in = create_token(user.username, user.role)
+    audit.write_audit(user.username, "login", ip=_client_ip(request))
+    return LoginResp(token=token, expires_in=expires_in, role=user.role)
 
 
 @router.get("/me", response_model=MeResp)
-def me(user: str = Depends(get_current_user)):
-    return MeResp(username=user)
+def me(user: User = Depends(get_current_user)):
+    return MeResp(username=user.username, role=user.role)
+
+
+@router.post("/logout")
+def logout(request: Request, user: User = Depends(get_current_user)):
+    """JWT 无状态，这里只写审计（前端清本地 token）。"""
+    audit.write_audit(user.username, "logout", ip=_client_ip(request))
+    return {"ok": True}
+
+
+@router.post("/screen-token", response_model=ScreenTokenResp)
+def screen_token(request: Request, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    """生成 30 天 viewer 令牌，供大屏/电视免密登录。仅 admin。
+
+    以内置账号 screen 签发：大屏身份是真实 viewer，get_current_user 查库即得
+    viewer 权限，与登录账号的 role 解耦。
+    """
+    if user.role != "admin":
+        raise HTTPException(403, "权限不足")
+    _ensure_screen_account(db)
+    token, expires_in = create_token(SCREEN_USER, "viewer", expires_minutes=30 * 24 * 60)
+    audit.write_audit(user.username, "screen_token_issued", ip=_client_ip(request))
+    return ScreenTokenResp(token=token, expires_in=expires_in)

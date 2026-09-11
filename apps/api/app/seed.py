@@ -7,8 +7,10 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
+from .config import get_settings
 from .db import SessionLocal
-from .models import Alert, BizSystem, Device, DeviceMetric, Topology, TopologyNodeDevice
+from .models import Alert, BizSystem, Device, DeviceMetric, Location, Topology, TopologyNodeDevice, User
+from .security import hash_password
 
 # ===== 初始拓扑（来自 graph-vis-v1 示例，24 节点/25 连线 + 1 分组）=====
 INITIAL_NODES = [
@@ -91,6 +93,13 @@ BIZ_SYSTEMS = [
     ("统一认证", "安全部", "normal", 99.99, 99.99),
 ]
 
+# 示例位置注册表（M6，三维机房 M7 会扩展）
+LOCATIONS = [
+    ("总部机房", "machine_room", "总部园区 A 座 3F"),
+    ("分部", "branch", "分部办公楼"),
+    ("数据中心", "machine_room", "自建机房"),
+]
+
 METRIC_BASE = {"cpu": 45, "memory": 60, "net_in": 120, "net_out": 80}
 
 
@@ -101,6 +110,24 @@ def _ts(t: float) -> datetime:
 def seed(force: bool = False) -> None:
     db = SessionLocal()
     try:
+        # ---- 管理员账号（.env ADMIN_USER/ADMIN_PASSWORD → user 表首个 admin，幂等）----
+        # 只创建不覆盖：用户在管理台改密码后，重跑 seed 不会把密码打回 .env 值。
+        s = get_settings()
+        admin = db.scalar(select(User).where(User.username == s.admin_user))
+        if admin is None:
+            db.add(User(username=s.admin_user, password_hash=hash_password(s.admin_password),
+                        display_name="管理员", role="admin"))
+            print(f"管理员账号已创建（{s.admin_user}）")
+        else:
+            print(f"管理员账号已存在，跳过（{s.admin_user}）")
+
+        # ---- 位置注册表 ----
+        existing_locs = set(db.execute(select(Location.name)).scalars())
+        for name, zt, remark in LOCATIONS:
+            if name not in existing_locs:
+                db.add(Location(name=name, zone_type=zt, remark=remark))
+        print(f"位置注册表已就绪（{len(LOCATIONS)} 条）")
+
         has_topo = db.scalar(select(Topology.id)) is not None
         has_dev = db.scalar(select(Device.id)) is not None
 

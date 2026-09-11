@@ -113,3 +113,41 @@ export interface TopologyActive {
   canvas: TopoCanvas
   devices: Record<string, { id: string; name: string; status: string; ip: string | null }>
 }
+
+// ===== M6 后台管理 =====
+export type Role = 'admin' | 'operator' | 'viewer'
+
+export interface UserAccount {
+  id: number
+  username: string
+  display_name: string | null
+  role: Role
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Location {
+  id: number
+  name: string
+  zone_type: 'headquarters' | 'branch' | 'machine_room' | 'other'
+  remark: string | null
+}
+
+export interface AuditItem {
+  id: number
+  username: string
+  action: string
+  target_type: string | null
+  target_id: string | null
+  detail: Record<string, unknown>
+  ip: string | null
+  created_at: string
+}
+
+export interface AuditPage {
+  items: AuditItem[]
+  total: number
+  page: number
+  page_size: number
+}

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
+import { useAuthStore } from '../store/auth'
 import type { Device, Overview } from '../types'
 import ChartCard from '../components/ChartCard.vue'
 import DevicePieCard from '../components/cards/DevicePieCard.vue'
@@ -17,6 +18,8 @@ import DeviceDrawer from '../components/topology/DeviceDrawer.vue'
 import { wsStatus } from '../composables/useWs'
 
 const router = useRouter()
+const auth = useAuthStore()
+const isViewer = computed(() => auth.role === 'viewer')
 const overview = ref<Overview | null>(null)
 const devices = ref<Device[]>([])
 const now = ref(new Date())
@@ -31,7 +34,7 @@ function openDevice(deviceId: string | null, nodeId: string) {
 }
 function gotoEditor(nodeId: string) {
   drawer.value.open = false
-  router.push({ path: '/editor', query: { node: nodeId } })
+  router.push({ path: '/topology', query: { node: nodeId } })
 }
 
 async function load() {
@@ -45,6 +48,7 @@ async function load() {
 }
 
 onMounted(() => {
+  auth.ensureMe()
   load()
   clockTimer = setInterval(() => (now.value = new Date()), 1000)
   pollTimer = setInterval(load, 30000)
@@ -61,8 +65,8 @@ onUnmounted(() => {
       <header class="topbar">
         <div class="logo">IT 运维<span>大屏</span></div>
         <div class="nav">
-          <router-link to="/" class="active">总览</router-link>
-          <router-link to="/editor">拓扑编辑</router-link>
+          <router-link to="/dashboard" class="active">总览</router-link>
+          <router-link to="/topology" v-if="!isViewer">拓扑编辑</router-link>
         </div>
         <div class="stat-chip">设备在线率 <b>{{ (overview.online_rate * 100).toFixed(1) }}%</b></div>
         <div class="stat-chip alert-chip" v-if="overview.unacked_alerts">

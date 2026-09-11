@@ -24,10 +24,12 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 
 export const api = {
   login: (username: string, password: string) =>
-    request<{ token: string; expires_in: number }>('/api/auth/login', {
+    request<{ token: string; expires_in: number; role: import('../store/auth').Role }>('/api/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }),
     }),
-  me: () => request<{ username: string }>('/api/auth/me'),
+  me: () => request<{ username: string; role: import('../store/auth').Role }>('/api/auth/me'),
+  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  screenToken: () => request<{ token: string; expires_in: number }>('/api/auth/screen-token', { method: 'POST' }),
   overview: () => request<import('../types').Overview>('/api/overview'),
   devices: (q?: Record<string, string>) => {
     const s = q ? '?' + new URLSearchParams(q).toString() : ''
@@ -57,4 +59,18 @@ export const api = {
     request<import('../types').DeviceTopItem[]>(`/api/overview/top?metric=${metric}&n=${n}&window_hours=${windowHours}`),
   bizSystems: () => request<import('../types').BizSystem[]>('/api/biz-systems'),
   topologyActive: () => request<import('../types').TopologyActive>('/api/topology/active'),
+  // ===== M6 后台管理 =====
+  users: () => request<import('../types').UserAccount[]>('/api/users'),
+  createUser: (body: { username: string; password: string; display_name?: string; role: string }) =>
+    request<import('../types').UserAccount>('/api/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (id: number, body: { display_name?: string; role?: string; enabled?: boolean }) =>
+    request<import('../types').UserAccount>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteUser: (id: number) => request<void>(`/api/users/${id}`, { method: 'DELETE' }),
+  resetPassword: (id: number, password: string) =>
+    request<{ ok: boolean }>(`/api/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
+  locations: () => request<import('../types').Location[]>('/api/locations'),
+  audit: (q?: Record<string, string>) => {
+    const s = q ? '?' + new URLSearchParams(q).toString() : ''
+    return request<import('../types').AuditPage>(`/api/audit${s}`)
+  },
 }

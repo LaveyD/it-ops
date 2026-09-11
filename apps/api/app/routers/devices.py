@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Alert, Device, DeviceMetric, Topology, TopologyNodeDevice
+from ..models import Alert, Device, DeviceMetric, Topology, TopologyNodeDevice, User
 from ..operators import get_operator
 from ..routers.auth import get_current_user
 from ..schemas import DeviceDetail, DeviceOut, MetricSeries, ReferencedBy
@@ -45,7 +45,7 @@ def list_devices(
     location: str | None = None,
     q: str | None = Query(None, description="名称模糊"),
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = select(Device)
     if status:
@@ -66,7 +66,7 @@ def list_devices(
 
 
 @router.get("/{device_id}", response_model=DeviceDetail)
-def device_detail(device_id: str, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def device_detail(device_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     d = db.get(Device, device_id)
     if d is None:
         raise HTTPException(404, "设备不存在")
@@ -100,7 +100,7 @@ def device_metrics(
     to: str | None = None,
     step: int | None = Query(None, ge=5, le=3600, description="采样步长（秒）"),
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     if db.get(Device, device_id) is None:
         raise HTTPException(404, "设备不存在")
@@ -131,7 +131,7 @@ def device_action(
     device_id: str,
     action: str,
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     if db.get(Device, device_id) is None:
         raise HTTPException(404, "设备不存在")

@@ -18,10 +18,76 @@ class LoginReq(BaseModel):
 class LoginResp(BaseModel):
     token: str
     expires_in: int  # 秒
+    role: str
 
 
 class MeResp(BaseModel):
     username: str
+    role: str
+
+
+# ===== users / locations / audit =====
+class UserOut(ORMModel):
+    id: int
+    username: str
+    display_name: str | None
+    role: str
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserCreateReq(BaseModel):
+    username: str = Field(min_length=2, max_length=64)
+    password: str = Field(min_length=6, max_length=128)
+    display_name: str | None = None
+    role: str = Field(default="operator", pattern="^(admin|operator|viewer)$")
+
+
+class UserUpdateReq(BaseModel):
+    display_name: str | None = None
+    role: str | None = Field(default=None, pattern="^(admin|operator|viewer)$")
+    enabled: bool | None = None
+
+
+class PasswordResetReq(BaseModel):
+    password: str = Field(min_length=6, max_length=128)
+
+
+class ScreenTokenResp(BaseModel):
+    token: str
+    expires_in: int  # 秒
+
+
+class LocationOut(ORMModel):
+    id: int
+    name: str
+    zone_type: str
+    remark: str | None
+
+
+class LocationReq(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    zone_type: str = Field(default="other", pattern="^(headquarters|branch|machine_room|other)$")
+    remark: str | None = None
+
+
+class AuditOut(ORMModel):
+    id: int
+    username: str
+    action: str
+    target_type: str | None
+    target_id: str | None
+    detail: dict
+    ip: str | None
+    created_at: datetime
+
+
+class AuditPageResp(BaseModel):
+    items: list[AuditOut]
+    total: int
+    page: int
+    page_size: int
 
 
 # ===== topology =====
