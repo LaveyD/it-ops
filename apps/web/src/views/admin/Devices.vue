@@ -204,7 +204,7 @@ onMounted(load)
       </el-table>
     </el-card>
 
-    <el-drawer v-model="drawer" :title="editing ? '编辑设备' : '新增设备'" size="420px">
+    <el-drawer v-model="drawer" append-to-body :title="editing ? '编辑设备' : '新增设备'" size="420px">
       <el-form label-width="90px">
         <el-form-item label="设备 ID" :error="formErrors.id">
           <el-input v-model="form.id" :disabled="!!editing" placeholder="如 srv-new-01" />

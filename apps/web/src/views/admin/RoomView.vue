@@ -132,7 +132,7 @@ const statusClass: Record<string, string> = { normal: 's-normal', warn: 's-warn'
     </div>
 
     <!-- 机柜抽屉 -->
-    <el-drawer v-model="drawer" size="380px" :title="drawerCab ? `机柜 ${drawerCab.name}` : '机柜'">
+    <el-drawer v-model="drawer" append-to-body size="380px" :title="drawerCab ? `机柜 ${drawerCab.name}` : '机柜'">
       <template v-if="drawerCab">
         <el-descriptions :column="2" border size="small" class="rv-desc">
           <el-descriptions-item label="位置">第 {{ drawerCab.row }} 行 · 第 {{ drawerCab.col }} 列</el-descriptions-item>

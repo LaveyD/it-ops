@@ -97,7 +97,7 @@ onMounted(load)
       />
     </el-card>
 
-    <el-drawer v-model="detailVisible" title="审计详情" size="460px">
+    <el-drawer v-model="detailVisible" append-to-body title="审计详情" size="460px">
       <template v-if="detail">
         <el-descriptions :column="1" border size="small">
           <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
