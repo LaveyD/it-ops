@@ -19,7 +19,7 @@ const quickLinks = [
   { to: '/admin/network/links', label: '链路视图', desc: '派生链路台账' },
   { to: '/admin/alerts', label: '告警中心', desc: '筛选 / 批量确认' },
   { to: '/admin/assets/device', label: '设备台账', desc: 'CRUD / 状态' },
-  { to: '/admin/twin', label: '3D 总览', desc: '网络孪生' },
+  { to: '/admin/twin', label: '状态孪生', desc: '实时状态 / 异常定位' },
   { to: '/admin/twin/room', label: '3D 机房', desc: '三维机房' },
   { to: '/admin/system/users', label: '用户与角色', desc: 'RBAC / 大屏令牌' },
 ]

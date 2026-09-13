@@ -51,7 +51,7 @@ const groups: MenuGroup[] = [
     { index: '/admin/network/links', title: '链路视图' },
   ]},
   { title: '数字孪生', items: [
-    { index: '/admin/twin', title: '3D 总览' },
+    { index: '/admin/twin', title: '状态孪生' },
     { index: '/admin/twin/room', title: '3D 机房' },
   ]},
   { title: '系统管理', adminOnly: true, items: [
