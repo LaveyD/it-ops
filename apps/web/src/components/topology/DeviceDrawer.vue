@@ -29,6 +29,10 @@ const series = ref<MetricSeries[]>([])
 const metricsLoading = ref(false)
 
 const statusText: Record<string, string> = { normal: '正常', warn: '警告', alert: '严重' }
+// cpu/memory 是百分比，net_in/net_out 是 Mbps（对齐 collector PROFILES 口径）
+const METRIC_LABEL: Record<string, string> = { cpu: 'CPU', memory: '内存', net_in: '入流量', net_out: '出流量' }
+const fmtMetric = (k: string, v: number) =>
+  (k === 'cpu' || k === 'memory') ? `${v}%` : `${v} Mbps`
 const timeAgo = (iso: string) => {
   const d = Date.now() - new Date(iso).getTime()
   const m = Math.floor(d / 60000)
@@ -145,7 +149,7 @@ watch(() => props.deviceId, () => { if (props.open) { load(); if (props.deviceId
             <p v-if="loading" class="dim">加载中…</p>
             <template v-else>
               <div class="kv" v-for="(v, k) in detail.latest_metrics" :key="k">
-                <span class="k">{{ k }}</span><span class="v">{{ v }}%</span>
+                <span class="k">{{ METRIC_LABEL[k] || k }}</span><span class="v">{{ fmtMetric(k, v) }}</span>
               </div>
               <p class="dim note">最新指标（collector 实时采集）</p>
             </template>
