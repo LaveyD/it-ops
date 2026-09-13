@@ -9,7 +9,8 @@ from sqlalchemy import func, select
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import Alert, BizSystem, Device, DeviceMetric, Location, Topology, TopologyNodeDevice, User
+from .models import (Alert, BizSystem, Cabinet, Device, DeviceMetric, Location, Room,
+                     Topology, TopologyNodeDevice, User)
 from .security import hash_password
 
 # ===== 初始拓扑（来自 graph-vis-v1 示例，24 节点/25 连线 + 1 分组）=====
@@ -100,6 +101,18 @@ LOCATIONS = [
     ("数据中心", "machine_room", "自建机房"),
 ]
 
+# 示例机房（M7）：总部数据中心 2 行 × 12 机柜，机柜名 A1-01..A2-12
+# 设备 U 位填充：device_id -> (机柜列, u_start)；按行1布置（row=1）
+ROOM_NAME = "总部数据中心"
+ROOM_ROWS, ROOM_COLS = 2, 12
+DEVICE_U_SLOTS = {
+    "rtr-core-01": (1, 36), "rtr-core-02": (1, 18),
+    "fw-01": (2, 36), "fw-02": (2, 18),
+    "swt-aggr-01": (3, 36), "swt-lan-01": (3, 18),
+    "fw-03": (4, 36), "fw-04": (4, 18),
+    "srv-app-01": (5, 36), "srv-app-02": (5, 18),
+}
+
 METRIC_BASE = {"cpu": 45, "memory": 60, "net_in": 120, "net_out": 80}
 
 
@@ -126,7 +139,25 @@ def seed(force: bool = False) -> None:
         for name, zt, remark in LOCATIONS:
             if name not in existing_locs:
                 db.add(Location(name=name, zone_type=zt, remark=remark))
+        db.flush()
         print(f"位置注册表已就绪（{len(LOCATIONS)} 条）")
+
+        # ---- 示例机房 + 机柜（M7，幂等）----
+        room = db.scalar(select(Room).where(Room.name == ROOM_NAME))
+        if room is None:
+            loc_hq = db.scalar(select(Location).where(Location.name == "数据中心"))
+            room = Room(name=ROOM_NAME, location_id=loc_hq.id if loc_hq else None,
+                        rows=ROOM_ROWS, cols=ROOM_COLS, remark="示例机房（M7 seed）")
+            db.add(room)
+            db.flush()
+            for r in range(1, ROOM_ROWS + 1):
+                for c in range(1, ROOM_COLS + 1):
+                    db.add(Cabinet(room_id=room.id, name=f"A{r}-{c:02d}",
+                                   row=r, col=c, u_height=42))
+            print(f"示例机房已创建（{ROOM_NAME} {ROOM_ROWS}×{ROOM_COLS}）")
+        else:
+            print(f"示例机房已存在，跳过（{room.name}）")
+        # 设备 U 位填充统一放在设备落库后（见「设备」段之后）
 
         has_topo = db.scalar(select(Topology.id)) is not None
         has_dev = db.scalar(select(Device.id)) is not None
@@ -203,6 +234,22 @@ def seed(force: bool = False) -> None:
                 db.add(Alert(device_id=did, level=lv, title=title, detail=detail,
                              created_at=_ts(now - (i + 1) * 1800), acked=i > 2))
             print("告警 近7天历史 + 5 条实时样例 已创建")
+
+        # ---- 设备 U 位填充（M7，幂等：只填 cabinet_id 为空的）----
+        if room is not None:
+            cabs = {c.name: c for c in db.execute(
+                select(Cabinet).where(Cabinet.room_id == room.id)).scalars()}
+            filled = 0
+            for did, (col, u) in DEVICE_U_SLOTS.items():
+                d = db.get(Device, did)
+                cab = cabs.get(f"A1-{col:02d}")
+                if d is None or cab is None or d.cabinet_id is not None:
+                    continue
+                d.cabinet_id = cab.id
+                d.u_start = u
+                filled += 1
+            if filled:
+                print(f"设备 U 位已填充 {filled} 台")
 
         # ---- 业务系统 ----
         existing = set(db.execute(select(BizSystem.name)).scalars())

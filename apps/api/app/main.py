@@ -7,7 +7,7 @@ from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import alerts, audit, auth, biz_systems, devices, locations, overview, topology, users
+from .routers import alerts, audit, auth, biz_systems, devices, locations, overview, rooms, topology, users
 from .ws import hub
 
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(locations.router)
+app.include_router(rooms.router)
 app.include_router(audit.router)
 app.include_router(topology.router)
 app.include_router(devices.router)

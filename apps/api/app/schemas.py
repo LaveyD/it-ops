@@ -119,9 +119,44 @@ class DeviceOut(ORMModel):
     ip: str | None = None
     status: str
     location: str | None = None
+    location_id: int | None = None
+    cabinet_id: int | None = None
+    u_start: int | None = None
     owner: str | None = None
     extra: dict = {}
     referenced_by: list[ReferencedBy] = []
+
+
+class DeviceCreateReq(BaseModel):
+    id: str = Field(min_length=2, max_length=64, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+    name: str = Field(min_length=1, max_length=64)
+    type: str = Field(min_length=1, max_length=32)
+    ip: str | None = None
+    status: str = Field(default="normal", pattern="^(normal|warn|alert)$")
+    location: str | None = None
+    location_id: int | None = None
+    cabinet_id: int | None = None
+    u_start: int | None = Field(default=None, ge=1, le=99)
+    owner: str | None = None
+    extra: dict = {}
+
+
+class DeviceUpdateReq(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    type: str | None = Field(default=None, min_length=1, max_length=32)
+    ip: str | None = None
+    status: str | None = Field(default=None, pattern="^(normal|warn|alert)$")
+    location: str | None = None
+    location_id: int | None = None
+    cabinet_id: int | None = None
+    u_start: int | None = Field(default=None, ge=1, le=99)
+    owner: str | None = None
+    extra: dict | None = None
+
+
+class DeviceBatchStatusReq(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=500)
+    status: str = Field(pattern="^(normal|warn|alert)$")
 
 
 class DeviceDetail(DeviceOut):
@@ -154,6 +189,10 @@ class AlertDailyCount(BaseModel):
     crit: int = 0
 
 
+class AlertAckBatchReq(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
 # ===== overview =====
 class DeviceTopItem(BaseModel):
     device_id: str
@@ -170,6 +209,79 @@ class BizSystemOut(ORMModel):
     status: str
     sla_target: float | None = None
     sla_actual: float | None = None
+
+
+class BizSystemReq(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    owner: str | None = None
+    status: str = Field(default="normal", pattern="^(normal|warn|alert)$")
+    sla_target: float | None = Field(default=None, ge=0, le=100)
+    sla_actual: float | None = Field(default=None, ge=0, le=100)
+
+
+# ===== rooms / cabinets（三维机房数据源）=====
+class RoomOut(ORMModel):
+    id: int
+    name: str
+    location_id: int | None = None
+    rows: int
+    cols: int
+    remark: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RoomReq(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    location_id: int | None = None
+    rows: int = Field(default=1, ge=1, le=16)
+    cols: int = Field(default=1, ge=1, le=64)
+    remark: str | None = None
+
+
+class CabinetOut(ORMModel):
+    id: int
+    room_id: int
+    name: str
+    row: int
+    col: int
+    u_height: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class CabinetReq(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    row: int = Field(default=1, ge=1, le=16)
+    col: int = Field(default=1, ge=1, le=64)
+    u_height: int = Field(default=42, ge=1, le=60)
+    status: str = Field(default="normal", pattern="^(normal|warn|alert)$")
+
+
+class RoomSceneDevice(BaseModel):
+    id: str
+    name: str
+    type: str
+    status: str
+    u_start: int | None = None
+    ip: str | None = None
+
+
+class RoomSceneCabinet(BaseModel):
+    id: int
+    name: str
+    row: int
+    col: int
+    u_height: int
+    status: str
+    devices: list[RoomSceneDevice] = []
+
+
+class RoomSceneOut(BaseModel):
+    """三维机房场景聚合：机房几何 + 机柜矩阵 + 每柜 U 位设备。"""
+    room: dict
+    cabinets: list[RoomSceneCabinet]
 
 
 # ===== overview =====

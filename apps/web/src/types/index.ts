@@ -30,6 +30,9 @@ export interface Device {
   ip: string | null
   status: 'normal' | 'warn' | 'alert'
   location: string | null
+  location_id: number | null
+  cabinet_id: number | null
+  u_start: number | null
   owner: string | null
   extra: Record<string, unknown>
   referenced_by: ReferencedBy[]
@@ -150,4 +153,54 @@ export interface AuditPage {
   total: number
   page: number
   page_size: number
+}
+
+// ===== M7 资产与空间 =====
+export interface Room {
+  id: number
+  name: string
+  location_id: number | null
+  rows: number
+  cols: number
+  remark: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Cabinet {
+  id: number
+  room_id: number
+  name: string
+  row: number
+  col: number
+  u_height: number
+  status: 'normal' | 'warn' | 'alert'
+  created_at: string
+  updated_at: string
+}
+
+export interface SceneDevice {
+  id: string
+  name: string
+  type: string
+  status: 'normal' | 'warn' | 'alert'
+  u_start: number | null
+  ip: string | null
+}
+
+export interface SceneCabinet extends Omit<Cabinet, 'room_id' | 'created_at' | 'updated_at'> {
+  devices: SceneDevice[]
+}
+
+export interface RoomScene {
+  room: { id: number; name: string; rows: number; cols: number; location_id: number | null; remark: string | null }
+  cabinets: SceneCabinet[]
+}
+
+export interface BizSystemInput {
+  name: string
+  owner?: string | null
+  status?: 'normal' | 'warn' | 'alert'
+  sla_target?: number | null
+  sla_actual?: number | null
 }

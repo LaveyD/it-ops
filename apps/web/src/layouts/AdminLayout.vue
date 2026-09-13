@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../store/auth'
 import { api } from '../api'
@@ -36,7 +36,8 @@ async function logout() {
 }
 
 // M6 菜单骨架（后续里程碑逐页实现：M7 资产/告警、M8 网络、M9 孪生、M10 系统）
-const menus = [
+// adminOnly：系统管理类，仅 admin 可见（operator 可见其余全部）
+const menus: Array<{ index: string; title: string; adminOnly?: boolean }> = [
   { index: '/admin', title: '总览' },
   { index: '/admin/assets/location', title: '机房与区域' },
   { index: '/admin/assets/device', title: '设备台账' },
@@ -46,10 +47,11 @@ const menus = [
   { index: '/admin/network/links', title: '链路视图' },
   { index: '/admin/twin', title: '3D 总览' },
   { index: '/admin/twin/room', title: '3D 机房' },
-  { index: '/admin/system/users', title: '用户与角色' },
-  { index: '/admin/system/audit', title: '审计日志' },
-  { index: '/admin/system/notify', title: '通知配置' },
+  { index: '/admin/system/users', title: '用户与角色', adminOnly: true },
+  { index: '/admin/system/audit', title: '审计日志', adminOnly: true },
+  { index: '/admin/system/notify', title: '通知配置', adminOnly: true },
 ]
+const visibleMenus = computed(() => menus.filter((m) => !m.adminOnly || auth.role === 'admin'))
 </script>
 
 <template>
@@ -60,7 +62,7 @@ const menus = [
       </div>
       <nav class="admin-menu">
         <router-link
-          v-for="m in menus"
+          v-for="m in visibleMenus"
           :key="m.index"
           :to="m.index"
           class="menu-item"

@@ -19,6 +19,8 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
     try { const j = await res.json(); detail = JSON.stringify(j.detail ?? j) } catch { /* ignore */ }
     throw new Error(detail)
   }
+  // 204 / 空 body（删除类接口返回 No Content）→ 安全返回 null
+  if (res.status === 204 || res.headers.get('content-length') === '0') return null as T
   return res.json()
 }
 
@@ -69,8 +71,46 @@ export const api = {
   resetPassword: (id: number, password: string) =>
     request<{ ok: boolean }>(`/api/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) }),
   locations: () => request<import('../types').Location[]>('/api/locations'),
+  createLocation: (body: { name: string; zone_type?: string; remark?: string | null }) =>
+    request<import('../types').Location>('/api/locations', { method: 'POST', body: JSON.stringify(body) }),
+  updateLocation: (id: number, body: { name: string; zone_type?: string; remark?: string | null }) =>
+    request<import('../types').Location>(`/api/locations/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteLocation: (id: number) => request<void>(`/api/locations/${id}`, { method: 'DELETE' }),
   audit: (q?: Record<string, string>) => {
     const s = q ? '?' + new URLSearchParams(q).toString() : ''
     return request<import('../types').AuditPage>(`/api/audit${s}`)
   },
+  // ===== M7 资产与空间 =====
+  createDevice: (body: Record<string, unknown>) =>
+    request<import('../types').Device>('/api/devices', { method: 'POST', body: JSON.stringify(body) }),
+  updateDevice: (id: string, body: Record<string, unknown>) =>
+    request<import('../types').Device>(`/api/devices/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteDevice: (id: string) => request<void>(`/api/devices/${id}`, { method: 'DELETE' }),
+  batchDeviceStatus: (ids: string[], status: string) =>
+    request<{ updated: number; missing: string[] }>('/api/devices/batch-status', {
+      method: 'POST', body: JSON.stringify({ ids, status }),
+    }),
+  createBiz: (body: import('../types').BizSystemInput) =>
+    request<import('../types').BizSystem>('/api/biz-systems', { method: 'POST', body: JSON.stringify(body) }),
+  updateBiz: (id: number, body: import('../types').BizSystemInput) =>
+    request<import('../types').BizSystem>(`/api/biz-systems/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteBiz: (id: number) => request<void>(`/api/biz-systems/${id}`, { method: 'DELETE' }),
+  rooms: () => request<import('../types').Room[]>('/api/rooms'),
+  createRoom: (body: { name: string; location_id?: number | null; rows: number; cols: number; remark?: string | null }) =>
+    request<import('../types').Room>('/api/rooms', { method: 'POST', body: JSON.stringify(body) }),
+  updateRoom: (id: number, body: { name: string; location_id?: number | null; rows: number; cols: number; remark?: string | null }) =>
+    request<import('../types').Room>(`/api/rooms/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteRoom: (id: number) => request<void>(`/api/rooms/${id}`, { method: 'DELETE' }),
+  roomCabinets: (roomId: number) =>
+    request<import('../types').Cabinet[]>(`/api/rooms/${roomId}/cabinets`),
+  createCabinet: (roomId: number, body: { name: string; row: number; col: number; u_height?: number; status?: string }) =>
+    request<import('../types').Cabinet>(`/api/rooms/${roomId}/cabinets`, { method: 'POST', body: JSON.stringify(body) }),
+  updateCabinet: (id: number, body: { name: string; row: number; col: number; u_height?: number; status?: string }) =>
+    request<import('../types').Cabinet>(`/api/rooms/cabinets/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteCabinet: (id: number) => request<void>(`/api/rooms/cabinets/${id}`, { method: 'DELETE' }),
+  roomScene: (roomId: number) => request<import('../types').RoomScene>(`/api/rooms/${roomId}/scene`),
+  ackAlerts: (ids: number[]) =>
+    request<{ acked: number; missing: number[] }>('/api/alerts/ack-batch', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }),
 }

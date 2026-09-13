@@ -46,8 +46,11 @@ class Device(Base):
     name: Mapped[str] = mapped_column(Text)
     type: Mapped[str] = mapped_column(Text)
     ip: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(Text, default="normal")
-    location: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="normal")  # normal | warn | alert
+    location: Mapped[str | None] = mapped_column(Text)  # 文本冗余（展示用）
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id", ondelete="SET NULL"))
+    cabinet_id: Mapped[int | None] = mapped_column(ForeignKey("cabinet.id", ondelete="SET NULL"))
+    u_start: Mapped[int | None] = mapped_column(Integer)  # U 位起（三维机房用，可空）
     owner: Mapped[str | None] = mapped_column(Text)
     extra: Mapped[dict] = mapped_column(JSONB, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -120,3 +123,32 @@ class Location(Base):
     name: Mapped[str] = mapped_column(Text, unique=True)
     zone_type: Mapped[str] = mapped_column(Text, default="other")  # headquarters | branch | machine_room | other
     remark: Mapped[str | None] = mapped_column(Text)
+
+
+class Room(Base):
+    """机房（几何参数，三维机房渲染数据源之一）。"""
+    __tablename__ = "room"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id", ondelete="SET NULL"))
+    rows: Mapped[int] = mapped_column(Integer, default=1)  # 行数
+    cols: Mapped[int] = mapped_column(Integer, default=1)  # 每行机柜数
+    remark: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class Cabinet(Base):
+    """机柜（行/列定位 + U 高，三维机房实例化渲染数据源）。"""
+    __tablename__ = "cabinet"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    row: Mapped[int] = mapped_column(Integer, default=1)  # 行号（1 起）
+    col: Mapped[int] = mapped_column(Integer, default=1)  # 列号（1 起）
+    u_height: Mapped[int] = mapped_column(Integer, default=42)  # U 位高度
+    status: Mapped[str] = mapped_column(Text, default="normal")  # normal | warn | alert
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

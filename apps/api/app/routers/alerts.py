@@ -1,16 +1,22 @@
-"""告警路由：列表 + 确认 + 按天统计。"""
+"""告警路由：列表 + 确认（单条/批量）+ 按天统计。"""
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import audit
 from ..db import get_db
 from ..models import Alert, Device, User
 from ..routers.auth import get_current_user
-from ..schemas import AlertDailyCount, AlertOut
+from ..schemas import AlertAckBatchReq, AlertDailyCount, AlertOut
+from ..security import require_role
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
+
+
+def _ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 @router.get("/stats", response_model=list[AlertDailyCount])
@@ -71,3 +77,18 @@ def ack(alert_id: int, db: Session = Depends(get_db), user: User = Depends(get_c
     db.commit()
     db.refresh(a)
     return AlertOut.model_validate(a)
+
+
+@router.post("/ack-batch", response_model=dict)
+def ack_batch(req: AlertAckBatchReq, request: Request,
+              user: User = Depends(require_role("admin", "operator")),
+              db: Session = Depends(get_db)):
+    """批量确认；ids 中不存在的跳过并回报。"""
+    found = set(db.execute(select(Alert.id).where(Alert.id.in_(req.ids))).scalars())
+    missing = sorted(set(req.ids) - found)
+    for a in db.execute(select(Alert).where(Alert.id.in_(found))).scalars():
+        a.acked = True
+    db.commit()
+    audit.write_audit(user.username, "alert_ack_batch", target_type="alert",
+                      target_id=str(len(found)), detail={"missing": missing}, ip=_ip(request))
+    return {"acked": len(found), "missing": missing}
