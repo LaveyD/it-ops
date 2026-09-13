@@ -15,7 +15,8 @@ onMounted(async () => {
 })
 
 const quickLinks = [
-  { to: '/topology', label: '网络拓扑编辑', desc: '版本管理 / 设备关联' },
+  { to: '/admin/network/topology', label: '网络拓扑', desc: '编辑 / 只读 / 版本管理' },
+  { to: '/admin/network/links', label: '链路视图', desc: '派生链路台账' },
   { to: '/admin/alerts', label: '告警中心', desc: '筛选 / 批量确认' },
   { to: '/admin/assets/device', label: '设备台账', desc: 'CRUD / 状态' },
   { to: '/admin/twin', label: '3D 总览', desc: '网络孪生' },

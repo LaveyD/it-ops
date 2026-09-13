@@ -34,7 +34,7 @@ function openDevice(deviceId: string | null, nodeId: string) {
 }
 function gotoEditor(nodeId: string) {
   drawer.value.open = false
-  router.push({ path: '/topology', query: { node: nodeId } })
+  router.push({ path: '/admin/network/topology', query: { node: nodeId } })
 }
 
 async function load() {
@@ -66,7 +66,7 @@ onUnmounted(() => {
         <div class="logo">IT 运维<span>大屏</span></div>
         <div class="nav">
           <router-link to="/dashboard" class="active">总览</router-link>
-          <router-link to="/topology" v-if="!isViewer">拓扑编辑</router-link>
+          <router-link to="/admin/network/topology" v-if="!isViewer">拓扑编辑</router-link>
         </div>
         <div class="stat-chip">设备在线率 <b>{{ (overview.online_rate * 100).toFixed(1) }}%</b></div>
         <div class="stat-chip alert-chip" v-if="overview.unacked_alerts">

@@ -188,7 +188,7 @@ onMounted(load)
           <template #default="{ row }">
             <router-link
               v-for="r in row.referenced_by" :key="r.topology_id + '-' + r.node_id"
-              class="chip" :to="`/topology?node=${encodeURIComponent(r.node_id)}`"
+              class="chip" :to="`/admin/network/topology?node=${encodeURIComponent(r.node_id)}`"
               :title="'在编辑器中查看节点 ' + r.node_label"
             >{{ r.topology_name }}·{{ r.node_label }}</router-link>
             <span v-if="!row.referenced_by.length" class="dim">-</span>

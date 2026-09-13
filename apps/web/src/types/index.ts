@@ -109,12 +109,38 @@ export interface TopologyVersion {
   updated_at: string
 }
 
+export interface TopologyVersionDetail extends TopologyVersion {
+  canvas: TopoCanvas
+}
+
 export interface TopologyActive {
   id: number
   name: string
   version: number
   canvas: TopoCanvas
   devices: Record<string, { id: string; name: string; status: string; ip: string | null }>
+}
+
+// M8 派生链路台账（/api/topology/active/links）
+export interface TopoLinkEnd {
+  node_id: string
+  label: string
+  device: { id: string; name: string; status: string; ip: string | null } | null
+  device_status: string // normal | warn | alert | unmanaged
+}
+
+export interface TopoLinkRow {
+  source: TopoLinkEnd
+  target: TopoLinkEnd
+  label: string
+  status: string // 两端最差（unmanaged 不参与比较）
+}
+
+export interface TopologyLinks {
+  topology_id: number
+  name: string
+  version: number
+  links: TopoLinkRow[]
 }
 
 // ===== M6 后台管理 =====

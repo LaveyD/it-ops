@@ -57,6 +57,13 @@ export const api = {
     request<import('../types').TopologyVersion>('/api/topology', { method: 'POST', body: JSON.stringify({ name, canvas }) }),
   activateTopology: (id: number) =>
     request<import('../types').TopologyVersion>(`/api/topology/${id}/activate`, { method: 'POST' }),
+  renameTopology: (id: number, name: string) =>
+    request<import('../types').TopologyVersion>(`/api/topology/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  deleteTopology: (id: number) => request<void>(`/api/topology/${id}`, { method: 'DELETE' }),
+  topologyLinks: () =>
+    request<import('../types').TopologyLinks>(`/api/topology/active/links`),
+  getVersion: (id: number) =>
+    request<import('../types').TopologyVersionDetail>(`/api/topology/${id}`),
   deviceTop: (metric = 'cpu', n = 10, windowHours = 1) =>
     request<import('../types').DeviceTopItem[]>(`/api/overview/top?metric=${metric}&n=${n}&window_hours=${windowHours}`),
   bizSystems: () => request<import('../types').BizSystem[]>('/api/biz-systems'),

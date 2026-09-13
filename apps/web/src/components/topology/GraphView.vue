@@ -4,11 +4,19 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { TopoEngine, fitToView } from './topo-core'
 import { api } from '../../api'
 import type { TopologyActive } from '../../types'
+import { watch } from 'vue'
 
 // 大屏只读拓扑：WS 增量（状态/新告警）+ 10s 轮询兜底（拓扑版本变更）
 // hover 浮层（名称/IP/状态/最近告警）+ 点击 → 设备抽屉
 import { useFeed } from '../../composables/useWs'
 const emit = defineEmits<{ (e: 'open-device', deviceId: string, nodeId: string): void }>()
+// M8 过滤器（后台只读模式）：数据层过滤后喂引擎，不动引擎内部。
+// q=关键词（节点名/设备/IP）、status=normal|warn|alert|unmanaged、onlyAbnormal=只看异常
+const props = defineProps<{
+  filter?: { q?: string; status?: string; onlyAbnormal?: boolean }
+  // M8 版本查看：外部指定 canvas（非生效版本快照）；不传则用 active
+  externalCanvas?: { nodes: unknown[]; links: unknown[]; groups?: unknown[] } | null
+}>()
 const box = ref<HTMLElement>()
 const active = ref<TopologyActive | null>(null)
 const lastAlerts = ref<Record<string, string>>({}) // deviceId -> 最近一条告警 title
@@ -20,6 +28,36 @@ const tip = ref({ show: false, x: 0, y: 0, nodeId: '', label: '', deviceId: '', 
 let poll: ReturnType<typeof setInterval> | null = null
 let offFeed: (() => void) | null = null
 
+// 数据层过滤：无过滤条件时原样返回（保留 groups）；有过滤时按节点状态/关键词过滤，
+// 连线两端都被保留才留下，groups 清空（过滤视图不显示分组框）。
+function filteredCanvas(canvas, devices) {
+  const f = props.filter
+  if (!f || (!f.q && !f.status && !f.onlyAbnormal)) return canvas
+  const q = (f.q || '').trim().toLowerCase()
+  const kept = new Set()
+  const nodes = (canvas.nodes || []).filter((n) => {
+    const did = n.properties && n.properties.deviceId
+    const dev = did ? devices[did] : null
+    const st = dev ? dev.status : 'unmanaged'
+    if (q) {
+      const hay = [n.label, dev ? dev.name : '', dev ? dev.ip : ''].filter(Boolean).join(' ').toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    if (f.status && st !== f.status) return false
+    if (f.onlyAbnormal && st !== 'warn' && st !== 'alert') return false
+    kept.add(n.id)
+    return true
+  })
+  const links = (canvas.links || []).filter((l) => kept.has(l.source) && kept.has(l.target))
+  return { nodes, links, groups: [] }
+}
+
+function renderSource(canvas, devices) {
+  // 外部快照优先（查看非生效版本）
+  const src = props.externalCanvas || canvas
+  return filteredCanvas(src, devices)
+}
+
 async function load() {
   try {
     const a = await api.topologyActive()
@@ -27,7 +65,7 @@ async function load() {
     if (engine) {
       engine.setDevices(a.devices)
       if (changed) {
-        engine.renderCanvas(a.canvas)
+        engine.renderCanvas(renderSource(a.canvas, a.devices))
         // 首次加载（active 尚为 null）或拓扑版本变更 → 重新自适应缩放居中，
         // 保证首屏就铺满并居中，而不是停在默认的左上角视图。
         setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
@@ -106,6 +144,20 @@ onMounted(async () => {
   engine.init(null)
   await load()
   poll = setInterval(load, 10000) // 轮询兜底：拓扑版本变更（设备状态/告警走 WS）
+  // 过滤器变化 → 重渲染（数据层过滤，不依赖引擎内部 API）
+  watch(() => props.filter, () => {
+    if (engine && active.value) {
+      engine.renderCanvas(renderSource(active.value.canvas, active.value.devices))
+      setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+    }
+  }, { deep: true })
+  // 外部快照变化（查看版本切换）→ 重渲染
+  watch(() => props.externalCanvas, () => {
+    if (engine && active.value) {
+      engine.renderCanvas(renderSource(active.value.canvas, active.value.devices))
+      setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+    }
+  }, { deep: true })
   // WS 增量：状态变更 → 节点立即变色；新告警 → hover 浮层最近告警
   offFeed = useFeed((m) => {
     if (m.type !== 'feed_update') return
@@ -126,7 +178,8 @@ onUnmounted(() => { if (poll) clearInterval(poll); offFeed?.(); engine?.dispose(
 
 // 供父级取节点名（抽屉标题）
 function nodeLabelById(id: string) {
-  return active.value?.canvas.nodes.find((n) => n.id === id)?.label || id
+  const canvas = props.externalCanvas || active.value?.canvas
+  return canvas?.nodes.find((n) => n.id === id)?.label || id
 }
 // 调试/测试：模拟点击某节点（走 onNodeClick → open-device）
 function clickNode(id: string) {

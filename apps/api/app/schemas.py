@@ -96,6 +96,10 @@ class TopologySaveReq(BaseModel):
     canvas: dict = Field(..., description="{nodes[], links[], groups[]}")
 
 
+class TopologyRenameReq(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
 class TopologyVersionItem(ORMModel):
     id: int
     name: str

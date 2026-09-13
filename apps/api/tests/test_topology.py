@@ -61,10 +61,12 @@ def test_topology_save_new_version(client, auth):
     r = client.post("/api/topology", headers=auth, json={"name": "pytest 临时版本", "canvas": canvas})
     assert r.status_code == 200, r.text
     new_id = r.json()["id"]
-    assert r.json()["version"] == base["version"] + 1
-    assert r.json()["is_active"] is False  # 已有生效版本，不应自动激活
-    # 清理测试版本（保留 active 不变）
-    _delete_topology(new_id)
+    try:
+        assert r.json()["version"] == base["version"] + 1
+        assert r.json()["is_active"] is False  # 已有生效版本，不应自动激活
+    finally:
+        # 清理测试版本（保留 active 不变；必须清理，否则版本号漂移污染后续运行）
+        _delete_topology(new_id)
 
 
 def test_topology_activate_switches_active(client, auth):

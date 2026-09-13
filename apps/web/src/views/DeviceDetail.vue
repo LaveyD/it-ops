@@ -81,7 +81,7 @@ onUnmounted(() => offFeed?.())
       <div class="logo">IT 运维<span>大屏</span></div>
       <div class="nav">
         <router-link to="/dashboard">总览</router-link>
-        <router-link to="/topology" v-if="!isViewer">拓扑编辑</router-link>
+        <router-link to="/admin/network/topology" v-if="!isViewer">拓扑编辑</router-link>
         <a class="active">设备详情</a>
       </div>
       <div class="stat-chip ws-chip" :class="wsStatus">
@@ -110,7 +110,7 @@ onUnmounted(() => offFeed?.())
             <router-link
               v-for="r in device.referenced_by" :key="r.topology_id + '-' + r.node_id"
               v-show="!isViewer"
-              class="ref-chip" :to="`/topology?node=${encodeURIComponent(r.node_id)}`"
+              class="ref-chip" :to="`/admin/network/topology?node=${encodeURIComponent(r.node_id)}`"
               :title="'在编辑器中查看节点 ' + r.node_label">
               {{ r.topology_name }} · {{ r.node_label }} →
             </router-link>

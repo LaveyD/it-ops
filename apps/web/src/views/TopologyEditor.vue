@@ -9,6 +9,11 @@ import type { Device, TopologyActive, TopologyVersion } from '../types'
 const route = useRoute()
 const router = useRouter()
 
+// embedded: 嵌进后台管理页（/admin/network/topology），隐藏自身顶栏、跟随容器高度
+const props = defineProps<{ embedded?: boolean }>()
+// M8：版本操作（保存新版本/激活）后通知管理页壳刷新版本面板
+const emit = defineEmits<{ (e: 'saved'): void; (e: 'activated'): void }>()
+
 const box = ref<HTMLElement>()
 let engine: TopoEngine | null = null
 
@@ -228,6 +233,7 @@ async function saveTopology() {
     activeTopo.value.id = v.id
     activeTopo.value.version = v.version
     await loadAll()
+    emit('saved')
   } catch (e) {
     // 422：FastAPI detail 为对象（missing_devices / errors），api client 序列化成 JSON 字符串
     const msg = String(e?.message || e)
@@ -246,6 +252,7 @@ async function activateVersion(id: number) {
     await loadAll()
     engine?.renderCanvas(activeTopo.value.canvas)
     setStatus(`已切换到 v${activeTopo.value.version}（${activeTopo.value.name}）`)
+    emit('activated')
   } catch (e) { setStatus('激活失败：' + e, true) }
 }
 
@@ -305,11 +312,16 @@ function bindDrop() {
   })
 }
 onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); engine?.dispose() })
+// 供管理页壳调用：外部版本切换后重渲染画布 / 同步版本与 active 数据（M8 TopologyView）
+defineExpose({
+  renderCanvas: (canvas: Record<string, unknown>) => engine?.renderCanvas(canvas),
+  loadAll,
+})
 </script>
 
 <template>
-  <div class="ed">
-    <header class="topbar">
+  <div class="ed" :class="{ embedded }">
+    <header v-if="!embedded" class="topbar">
       <div class="logo">IT 运维<span>拓扑编辑器</span></div>
       <div class="nav">
         <router-link to="/dashboard">总览</router-link>
@@ -365,8 +377,8 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); engine?.di
           <span class="tab-r" :class="{ active: tab === 'link' }" @click="tab = 'link'">连线</span>
         </div>
 
-        <!-- 版本管理 -->
-        <div class="sec ver">
+        <!-- 版本管理：独立路由时用编辑器内下拉；嵌入管理页时由 TopologyView 左面板接管 -->
+        <div v-if="!embedded" class="sec ver">
           <label>版本（点击切换/激活）</label>
           <select :value="activeTopo?.id" @change="activateVersion(Number($event.target.value))">
             <option v-for="v in versions" :key="v.id" :value="v.id">
@@ -451,6 +463,7 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); engine?.di
 
 <style scoped>
 .ed { height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
+.ed.embedded { height: 100%; }
 .topbar { height: 52px; flex-shrink: 0; display: flex; align-items: center; padding: 0 18px; background: var(--bg-2); border-bottom: 1px solid var(--border); }
 .logo { font-size: 17px; font-weight: 600; color: var(--accent); }
 .logo span { font-size: 12px; color: var(--text-dim); margin-left: 6px; font-weight: 400; }
