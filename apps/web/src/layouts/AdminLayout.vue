@@ -35,23 +35,32 @@ async function logout() {
   router.push('/login')
 }
 
-// M6 菜单骨架（后续里程碑逐页实现：M7 资产/告警、M8 网络、M9 孪生、M10 系统）
-// adminOnly：系统管理类，仅 admin 可见（operator 可见其余全部）
-const menus: Array<{ index: string; title: string; adminOnly?: boolean }> = [
-  { index: '/admin', title: '总览' },
-  { index: '/admin/assets/location', title: '机房与区域' },
-  { index: '/admin/assets/device', title: '设备台账' },
-  { index: '/admin/assets/biz', title: '业务系统' },
-  { index: '/admin/alerts', title: '告警中心' },
-  { index: '/admin/network/topology', title: '网络拓扑' },
-  { index: '/admin/network/links', title: '链路视图' },
-  { index: '/admin/twin', title: '3D 总览' },
-  { index: '/admin/twin/room', title: '3D 机房' },
-  { index: '/admin/system/users', title: '用户与角色', adminOnly: true },
-  { index: '/admin/system/audit', title: '审计日志', adminOnly: true },
-  { index: '/admin/system/notify', title: '通知配置', adminOnly: true },
+// M6 菜单骨架，M10 起按 TDDC 四模块分组：资产与空间 / 网络与连接 / 数字孪生 / 系统管理
+// 组级 adminOnly：系统管理组仅 admin 可见（operator 可见其余全部，viewer 无 /admin）
+interface MenuGroup { title: string; adminOnly?: boolean; items: Array<{ index: string; title: string }> }
+const groups: MenuGroup[] = [
+  { title: '', items: [{ index: '/admin', title: '总览' }] },
+  { title: '资产与空间', items: [
+    { index: '/admin/assets/location', title: '机房与区域' },
+    { index: '/admin/assets/device', title: '设备台账' },
+    { index: '/admin/assets/biz', title: '业务系统' },
+  ]},
+  { title: '告警', items: [{ index: '/admin/alerts', title: '告警中心' }] },
+  { title: '网络与连接', items: [
+    { index: '/admin/network/topology', title: '网络拓扑' },
+    { index: '/admin/network/links', title: '链路视图' },
+  ]},
+  { title: '数字孪生', items: [
+    { index: '/admin/twin', title: '3D 总览' },
+    { index: '/admin/twin/room', title: '3D 机房' },
+  ]},
+  { title: '系统管理', adminOnly: true, items: [
+    { index: '/admin/system/users', title: '用户与角色' },
+    { index: '/admin/system/audit', title: '审计日志' },
+    { index: '/admin/system/notify', title: '通知配置' },
+  ]},
 ]
-const visibleMenus = computed(() => menus.filter((m) => !m.adminOnly || auth.role === 'admin'))
+const visibleGroups = computed(() => groups.filter((g) => !g.adminOnly || auth.role === 'admin'))
 </script>
 
 <template>
@@ -61,15 +70,18 @@ const visibleMenus = computed(() => menus.filter((m) => !m.adminOnly || auth.rol
         <span class="dot" /> IT 运维平台
       </div>
       <nav class="admin-menu">
-        <router-link
-          v-for="m in visibleMenus"
-          :key="m.index"
-          :to="m.index"
-          class="menu-item"
-          :class="{ active: route.path === m.index }"
-        >
-          <span class="mi-title">{{ m.title }}</span>
-        </router-link>
+        <template v-for="g in visibleGroups" :key="g.title || 'top'">
+          <div v-if="g.title" class="menu-group-title">{{ g.title }}</div>
+          <router-link
+            v-for="m in g.items"
+            :key="m.index"
+            :to="m.index"
+            class="menu-item"
+            :class="{ active: route.path === m.index }"
+          >
+            <span class="mi-title">{{ m.title }}</span>
+          </router-link>
+        </template>
       </nav>
       <div class="side-foot">
         <a href="#" @click.prevent="goScreen">进入大屏</a>
@@ -100,6 +112,10 @@ const visibleMenus = computed(() => menus.filter((m) => !m.adminOnly || auth.rol
 .brand { padding: 20px 18px; font-size: 16px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px; }
 .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: #1890ff; box-shadow: 0 0 8px #1890ff; }
 .admin-menu { flex: 1; overflow-y: auto; padding: 8px 10px; }
+.menu-group-title {
+  padding: 16px 14px 6px; font-size: 11px; letter-spacing: .5px;
+  color: #5f7186; font-weight: 600;
+}
 .menu-item {
   display: block; padding: 11px 14px; margin-bottom: 4px; border-radius: 8px;
   color: #cfd8e3; font-size: 14px; transition: background .15s;
