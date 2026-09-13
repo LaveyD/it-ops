@@ -6,8 +6,6 @@ const milestone: Record<string, string> = {
   '/admin/assets/device': 'M7 资产与空间',
   '/admin/assets/biz': 'M7 资产与空间',
   '/admin/alerts': 'M7 告警中心',
-  '/admin/twin': 'M9 数字孪生',
-  '/admin/twin/room': 'M9 数字孪生（3D 机房）',
   '/admin/system/audit': 'M10 系统管理',
   '/admin/system/notify': 'M10 系统管理',
 }

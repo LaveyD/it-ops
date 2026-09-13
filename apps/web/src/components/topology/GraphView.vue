@@ -12,8 +12,9 @@ import { useFeed } from '../../composables/useWs'
 const emit = defineEmits<{ (e: 'open-device', deviceId: string, nodeId: string): void }>()
 // M8 过滤器（后台只读模式）：数据层过滤后喂引擎，不动引擎内部。
 // q=关键词（节点名/设备/IP）、status=normal|warn|alert|unmanaged、onlyAbnormal=只看异常
+// M9 hiddenTypes=隐藏的设备类型（3D 总览图层开关）
 const props = defineProps<{
-  filter?: { q?: string; status?: string; onlyAbnormal?: boolean }
+  filter?: { q?: string; status?: string; onlyAbnormal?: boolean; hiddenTypes?: string[] }
   // M8 版本查看：外部指定 canvas（非生效版本快照）；不传则用 active
   externalCanvas?: { nodes: unknown[]; links: unknown[]; groups?: unknown[] } | null
 }>()
@@ -28,14 +29,16 @@ const tip = ref({ show: false, x: 0, y: 0, nodeId: '', label: '', deviceId: '', 
 let poll: ReturnType<typeof setInterval> | null = null
 let offFeed: (() => void) | null = null
 
-// 数据层过滤：无过滤条件时原样返回（保留 groups）；有过滤时按节点状态/关键词过滤，
+// 数据层过滤：无过滤条件时原样返回（保留 groups）；有过滤时按节点状态/关键词/类型过滤，
 // 连线两端都被保留才留下，groups 清空（过滤视图不显示分组框）。
 function filteredCanvas(canvas, devices) {
   const f = props.filter
-  if (!f || (!f.q && !f.status && !f.onlyAbnormal)) return canvas
+  if (!f || (!f.q && !f.status && !f.onlyAbnormal && !(f.hiddenTypes && f.hiddenTypes.length))) return canvas
   const q = (f.q || '').trim().toLowerCase()
+  const hidden = new Set(f.hiddenTypes || [])
   const kept = new Set()
   const nodes = (canvas.nodes || []).filter((n) => {
+    if (hidden.has(n.type)) return false
     const did = n.properties && n.properties.deviceId
     const dev = did ? devices[did] : null
     const st = dev ? dev.status : 'unmanaged'
@@ -89,6 +92,13 @@ function onNodeClick(node) {
   } else {
     emit('open-device', null, node.id) // 未纳管 → 抽屉空态
   }
+}
+
+// M9 3D 总览：节点双击 → 相机聚焦。引擎 readOnly 模式吞掉 dblClick 回调，
+// 故在容器 DOM 层自行监听（引擎的 handler 不 stopPropagation，事件仍可冒泡）。
+function onDblClick(e: MouseEvent) {
+  const n = pickNode(e)
+  if (n && engine) engine.focusNode(n.id)
 }
 
 // hover 拾取：复刻引擎事件管线坐标换算（device px → scene 数据坐标）
@@ -186,13 +196,17 @@ function clickNode(id: string) {
   const n = active.value?.canvas.nodes.find((x) => x.id === id)
   if (n) onNodeClick(n)
 }
-defineExpose({ nodeLabelById, clickNode })
+defineExpose({
+  nodeLabelById, clickNode,
+  // M9：供父级（3D 总览图层面板等）聚焦某节点
+  focusNode: (id: string) => engine?.focusNode(id),
+})
 
 const statusText: Record<string, string> = { normal: '正常', warn: '警告', alert: '严重', unmanaged: '未纳管' }
 </script>
 
 <template>
-  <div ref="box" class="gv" @mousemove="onMove" @mouseleave="tip.show = false">
+  <div ref="box" class="gv" @mousemove="onMove" @mouseleave="tip.show = false" @dblclick="onDblClick">
     <div v-if="tip.show" class="tip" :style="{ left: tip.x + 'px', top: tip.y + 'px' }">
       <div class="tip-name">{{ tip.label }} <span :class="'s-' + tip.status">{{ statusText[tip.status] }}</span></div>
       <div v-if="tip.deviceId" class="tip-row">IP: {{ tip.ip }}</div>
