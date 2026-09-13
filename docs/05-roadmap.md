@@ -62,6 +62,23 @@
 - 文档同步（01/02/03 更新 + 06 转实施版）；Nginx :8041 全站回归
 - **验收**：全量 pytest + build；审计覆盖登录/设备/拓扑/告警/用户/配置操作；:8041 全站 curl 验收
 
+### M11 真实数据接入（Collector 落地）📋
+- 现状：`collectors/` 仅有 MockCollector（随机游走），工厂按 `COLLECTOR` 配置切换的抽象已备好
+- **PrometheusCollector**（首选）：按设备标签查询 instance 的 CPU/内存/网络指标（`curl /api/v1/query`），告警接 Prometheus Alertmanager 的 active alerts 快照对比（新增即产 alert）
+- 设备↔Prometheus 实例映射：device 表加 `prom_label`（如 `instance` 标签值）字段，拓扑/台账可配
+- 配置切换：`.env` `COLLECTOR=prometheus` + `PROMETHEUS_URL`；mock 保留作演示/降级
+- **验收**：本地起 Prometheus 喂样例数据 → `COLLECTOR=prometheus` 重启后端 → 大屏指标/告警来自真实查询；mock 模式回归不破坏
+
+### M12 运维动作 + 通知落地 📋
+- **Operator 落地**：`operators/` 现 NoopOperator（全 501）。接 SSH 通道（paramiko）支持动作集：`reboot / power_on / power_off / console`；DeviceDrawer 操作 Tab 由占位变真实按钮 + 二次确认 + 结果回显
+- **通知真实推送**：notify_config 已有 webhook 字段，落企业微信/钉钉/飞书 markdown 机器人；触发时机：crit 告警产生 + 批量告警确认；失败重试 + 审计
+- **验收**：webhook 指向本地 mock 服务验证报文格式；crit 告警产生后 <5s 收到推送；动作执行全链路审计可查
+
+### M+ 远期（不在当前排期）
+- 指标表分区 / TimescaleDB（数据量持续增长后）
+- WS hub 换 Redis pub/sub（多实例部署时）
+- 大屏 vite 双 entry 拆包（强隔离场景）
+
 ## 每里程碑通用验收
 - 前端：`vue-tsc --noEmit` + `vite build` 无错
 - 后端：`pytest`（至少覆盖 auth/topology/overview）

@@ -46,8 +46,9 @@ class MockCollector:
             for m, (base, step, lo, hi) in PROFILES.items():
                 v = self._walk((dev, m), base, step, lo, hi)
                 metrics.append({"device_id": dev, "metric": m, "ts": now, "value": round(v, 2)})
-            # 每轮 8% 概率产生一条告警
-            if random.random() < 0.08:
+            # 每轮 0.2% 概率产生一条告警（≈345 条/天，大屏滚动节奏适中；
+            # 早期 8% 约 2.6 万条/天，未确认告警几天内爆炸）
+            if random.random() < 0.002:
                 level, title, fmt = random.choice(ALERT_TEMPLATES)
                 alerts.append({
                     "device_id": dev, "level": level, "title": title,

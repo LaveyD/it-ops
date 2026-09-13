@@ -10,9 +10,10 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from .collectors import get_collector
+from .config import get_settings
 from .db import SessionLocal
 from .models import Alert, Device, DeviceMetric
 from .ws import hub
@@ -21,6 +22,32 @@ log = logging.getLogger("it-ops.jobs")
 
 # 单例复用 collector：mock 的随机游走状态（上轮指标值）跨轮保持，曲线才平滑
 _collector = None
+# 定期清理上次执行时间（进程内状态；重启后按保留期幂等再清一次，无副作用）
+_last_prune: datetime | None = None
+PRUNE_INTERVAL_HOURS = 6
+
+
+def prune_old_data(db, alert_retention_days: int | None = None,
+                   metric_retention_days: int | None = None) -> dict:
+    """删除超过保留期的告警与指标。返回 {"alerts": n, "metrics": n}。
+
+    独立于 run_collection 导出，便于测试直接调用；jobs 循环每
+    PRUNE_INTERVAL_HOURS 触发一次。两表均有 created_at/ts 索引，
+    大批量 DELETE 按主键批量提交（PG 对 ctid 扫描 + 索引删除足够快，
+    百万行级别单次约秒级）。
+    """
+    s = get_settings()
+    ad = s.alert_retention_days if alert_retention_days is None else alert_retention_days
+    md = s.metric_retention_days if metric_retention_days is None else metric_retention_days
+    now = datetime.now(timezone.utc)
+    ra = db.execute(delete(Alert).where(
+        Alert.created_at < now - timedelta(days=ad))).rowcount
+    rm = db.execute(delete(DeviceMetric).where(
+        DeviceMetric.ts < now - timedelta(days=md))).rowcount
+    db.commit()
+    if ra or rm:
+        log.info("prune: 清理过期告警 %d 条 / 指标 %d 条", ra, rm)
+    return {"alerts": int(ra or 0), "metrics": int(rm or 0)}
 
 
 def _top_cpu(db, metric: str = "cpu", n: int = 10, window_hours: int = 1):
@@ -52,12 +79,22 @@ def _top_cpu(db, metric: str = "cpu", n: int = 10, window_hours: int = 1):
 
 
 async def run_collection() -> None:
-    global _collector
+    global _collector, _last_prune
     db = SessionLocal()
     try:
         dev_ids = [i for i in db.execute(select(Device.id)).scalars()]
         if not dev_ids:
             return
+        # 定期清理过期数据（每 6h 一次；mock 指标 ~4.6 万行/天、告警按新速率
+        # ~345 条/天，不清理表无限膨胀）
+        now = datetime.now(timezone.utc)
+        if _last_prune is None or now - _last_prune >= timedelta(hours=PRUNE_INTERVAL_HOURS):
+            try:
+                prune_old_data(db)
+                _last_prune = now
+            except Exception:
+                log.exception("prune 失败（忽略，下轮重试）")
+                db.rollback()
         if _collector is None:
             _collector = get_collector(dev_ids)
         batch = _collector.collect()

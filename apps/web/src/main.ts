@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import * as ElIcons from '@element-plus/icons-vue'
 // EP 基础变量/reset + 用到的组件样式（用 theme-chalk 预编译独立 css，
 // 不用 index.css：其含 a{display:inline-block} 等未作用域规则，会污染大屏/登录页；
@@ -53,6 +54,6 @@ if (qtoken) {
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
-app.use(ElementPlus)
+app.use(ElementPlus, { locale: zhCn })
 for (const [name, comp] of Object.entries(ElIcons)) app.component(name, comp)
 app.mount('#app')
