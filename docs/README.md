@@ -1,5 +1,7 @@
 # IT 运维大屏 · 总体设计
 
+> 本文是 M1~M5 阶段的**原始设计文档**（单一大屏视图）。项目自 **M6 起已拆分为「大屏展示 + 后台管理」双路由树**（RBAC 三角色、资产/网络/数字孪生/系统管理四模块），最新结构与权限见根 [README.md](../README.md) 与 [06 拆分与后台管理改造计划](06-split-and-admin-plan.md)。下文「项目定位 / 认证」等段落反映拆分前状态，仅存留作历史参考。
+
 ## 1. 项目定位
 
 面向运维人员在电脑端使用的 IT 运维可视化大屏：
@@ -27,7 +29,8 @@
 | [02-data-model.md](02-data-model.md) | 数据库表结构、索引、JSONB 约定 |
 | [03-api.md](03-api.md) | REST + WebSocket 接口契约 |
 | [04-dashboard-ui.md](04-dashboard-ui.md) | 首页布局、主题、拓扑组件移植方案、交互设计 |
-| [05-roadmap.md](05-roadmap.md) | 开发里程碑与验收标准 |
+| [05-roadmap.md](05-roadmap.md) | 开发里程碑与验收标准（M1~M10） |
+| [06-split-and-admin-plan.md](06-split-and-admin-plan.md) | 大屏/后台拆分 + 后台管理四模块改造（已实施） |
 
 ## 4. 已确认的产品决策
 
