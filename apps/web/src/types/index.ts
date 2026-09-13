@@ -181,6 +181,16 @@ export interface AuditPage {
   page_size: number
 }
 
+// ===== M10 系统管理 =====
+export interface NotifyConfig {
+  webhook_url: string | null
+  email_to: string | null
+  email_from: string | null
+  notify_alert: boolean
+  updated_by: string | null
+  updated_at: string
+}
+
 // ===== M7 资产与空间 =====
 export interface Room {
   id: number

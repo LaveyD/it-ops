@@ -87,6 +87,24 @@ export const api = {
     const s = q ? '?' + new URLSearchParams(q).toString() : ''
     return request<import('../types').AuditPage>(`/api/audit${s}`)
   },
+  // M10 系统管理
+  notifyConfig: () => request<import('../types').NotifyConfig>('/api/notify-config'),
+  saveNotifyConfig: (body: Partial<import('../types').NotifyConfig>) =>
+    request<import('../types').NotifyConfig>('/api/notify-config', { method: 'PUT', body: JSON.stringify(body) }),
+  // 审计 CSV 导出：token 在 localStorage（query 传参后端不支持），走 fetch blob
+  async downloadAuditExport(q?: Record<string, string>): Promise<void> {
+    const token = localStorage.getItem('token')
+    const s = q ? '?' + new URLSearchParams(q).toString() : ''
+    const res = await fetch(`/api/audit/export${s}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    if (!res.ok) throw new Error('导出失败')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'it-ops-audit.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
   // ===== M7 资产与空间 =====
   createDevice: (body: Record<string, unknown>) =>
     request<import('../types').Device>('/api/devices', { method: 'POST', body: JSON.stringify(body) }),

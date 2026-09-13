@@ -90,6 +90,23 @@ class AuditPageResp(BaseModel):
     page_size: int
 
 
+# ===== notify（M10 mock：仅落地保存）=====
+class NotifyConfigOut(BaseModel):
+    webhook_url: str | None
+    email_to: str | None
+    email_from: str | None
+    notify_alert: bool
+    updated_by: str | None
+    updated_at: datetime
+
+
+class NotifyConfigUpdate(BaseModel):
+    webhook_url: str | None = Field(default=None, max_length=512)
+    email_to: str | None = Field(default=None, max_length=512)
+    email_from: str | None = Field(default=None, max_length=512)
+    notify_alert: bool | None = None
+
+
 # ===== topology =====
 class TopologySaveReq(BaseModel):
     name: str | None = None

@@ -111,4 +111,4 @@ apps/api/app/operators/
 
 - 路由层只依赖协议，不感知数据来源/动作通道：后期接真实源或真实设备管理通道 = 新增实现 + 配置切换，**路由/前端零改动**
 - 后台任务：`app/jobs.py` 定时器（asyncio）周期性调 collector → 写库 → 经 WS 广播
-- 动作审计：operator 执行（成功/失败）统一写 `alert` 表（level=info，title 带 `[action]` 前缀），后期可单列 audit 表
+- 操作审计：M6 起单列 `audit_log` 表（`app/audit.py` 助手，独立 session 写、异常不阻断业务），覆盖登录/用户/设备/拓扑/告警/配置；operator 动作执行（M+）也将写此表

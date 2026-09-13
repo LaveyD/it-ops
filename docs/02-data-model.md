@@ -116,6 +116,86 @@ CREATE TABLE biz_system (
 );
 ```
 
+### 后台管理扩展表（M6~M10）
+
+```sql
+-- M6 用户与审计（后台管理 RBAC 底座）
+CREATE TABLE user (
+  id            BIGSERIAL PRIMARY KEY,
+  username      TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  display_name  TEXT,
+  role          TEXT NOT NULL DEFAULT 'operator',  -- admin | operator | viewer
+  enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE audit_log (
+  id          BIGSERIAL PRIMARY KEY,
+  username    TEXT NOT NULL,
+  action      TEXT NOT NULL,            -- login / login_failed / user_create / topology_save …
+  target_type TEXT,                     -- user / device / topology / alert …
+  target_id   TEXT,
+  detail      JSONB NOT NULL DEFAULT '{}',
+  ip          TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_audit_time ON audit_log (created_at DESC);
+
+-- M6 位置注册表（设备/机房归属，zone_type 分类）
+CREATE TABLE location (
+  id         BIGSERIAL PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE,
+  zone_type  TEXT NOT NULL DEFAULT 'other',  -- headquarters | branch | machine_room | other
+  remark     TEXT
+);
+
+-- M7 机房（几何参数，三维机房渲染数据源）
+CREATE TABLE room (
+  id          BIGSERIAL PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE,
+  location_id INTEGER REFERENCES location(id) ON DELETE SET NULL,
+  rows        INTEGER NOT NULL DEFAULT 1,    -- 行数
+  cols        INTEGER NOT NULL DEFAULT 1,    -- 每行机柜数
+  remark      TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- M7 机柜（行/列定位 + U 高，InstancedMesh 实例化渲染数据源）
+CREATE TABLE cabinet (
+  id         BIGSERIAL PRIMARY KEY,
+  room_id    INTEGER NOT NULL REFERENCES room(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,                 -- 如 A1-01
+  row        INTEGER NOT NULL DEFAULT 1,
+  col        INTEGER NOT NULL DEFAULT 1,
+  u_height   INTEGER NOT NULL DEFAULT 42,   -- 标准 42U
+  status     TEXT NOT NULL DEFAULT 'normal',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (room_id, name)
+);
+
+-- M10 通知配置（单行 mock，id 恒为 1；仅落地保存，推送 M+ 接入）
+CREATE TABLE notify_config (
+  id           INTEGER PRIMARY KEY,
+  webhook_url  TEXT,
+  email_to     TEXT,
+  email_from   TEXT,
+  notify_alert BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_by   TEXT,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (id = 1)
+);
+```
+
+`device` 表 M6/M7 扩展列：`location_id INT REFERENCES location(id) ON DELETE SET NULL`、
+`cabinet_id INT REFERENCES cabinet(id) ON DELETE SET NULL`、`u_start INT`（U 位起，三维机房用，可空）；
+原 `location TEXT` 保留为展示冗余。
+
+> 迁移全部**手工编写**（`alembic/versions/`）：m6（user/audit_log/location）、m7（room/cabinet + device 三列 + 存量 location 文本归并回填）、m10（notify_config + seed 单行）。
+
 ## 2. 约定
 
 1. **节点↔设备 = N:1**：一个节点最多关联 1 台设备（`node.properties.deviceId`），一台设备可被多个拓扑/多节点引用；关联是**可选的**，未关联 = "未纳管"

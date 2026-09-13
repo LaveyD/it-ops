@@ -33,6 +33,35 @@
 - README 补全（启停命令、环境变量、目录说明）
 - **验收**：生产入口一页能进；全部 API 401/404/500 行为正确；文档可照抄运行
 
+### M6 后台壳 + RBAC ✅（计划见 06-split-and-admin-plan.md）
+- 单 monorepo 双路由树：`/dashboard` 暗色大屏 + `/admin` 浅色后台（Element Plus 侧栏壳）
+- RBAC：JWT 带 role、`require_role` 依赖、admin/operator/viewer 三档；viewer 无 /admin 入口
+- 用户表 + 审计日志表（alembic m6）+ 用户管理 API + 大屏 30 天 viewer 令牌（内置 screen 账号）
+- 位置注册表 + 位置/机房/机柜 CRUD 底座
+- **验收**：三角色菜单/接口 403 边界正确；大屏令牌可登录且身份为 screen(viewer)；审计覆盖登录/用户操作
+
+### M7 资产与空间 + 告警中心 ✅
+- 机房/机柜/设备 CRUD + 设备批量改状态 + 业务系统 CRUD
+- 机房 scene 聚合接口（三维数据源：room + cabinets + 设备 U 位/状态）
+- 告警中心：筛选 + 单条/批量确认 + 7 天趋势
+- **验收**：资产台账闭环；scene 接口字段齐备；批量确认生效
+
+### M8 网络与连接 ✅
+- 网络拓扑管理页（编辑器升级：版本查看/改名/删除保护 409 + 只读/编辑模式 + 过滤器）
+- 链路视图：active 拓扑派生只读链路台账 + 目标定位回拓扑页聚焦
+- **验收**：拓扑版本管理闭环；链路状态取两端最差；深链定位正确
+
+### M9 数字孪生 ✅
+- 3D 总览：GraphView 大画布 + 8 大类类型图层 + 双击聚焦 + 演示模式
+- 3D 机房：Three.js 原生场景管理器（轨道相机 + 机柜/设备 InstancedMesh + 状态着色 + 拾取 + WS 增量改色 + alert 呼吸）
+- **验收**：图层过滤即时生效；WS 告警节点/机柜实时变色；3D 机房机柜点击抽屉正确
+
+### M10 系统管理 + 收口 ✅
+- 用户与角色页（CRUD/重置/禁用/大屏令牌）；审计日志页（查询/详情/CSV 导出）；通知配置页（mock 落地）
+- 后端：`/api/audit/export` CSV + `/api/notify-config`（notify_config 表 + 路由，alembic m10）
+- 文档同步（01/02/03 更新 + 06 转实施版）；Nginx :8041 全站回归
+- **验收**：全量 pytest + build；审计覆盖登录/设备/拓扑/告警/用户/配置操作；:8041 全站 curl 验收
+
 ## 每里程碑通用验收
 - 前端：`vue-tsc --noEmit` + `vite build` 无错
 - 后端：`pytest`（至少覆盖 auth/topology/overview）

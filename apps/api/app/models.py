@@ -116,6 +116,20 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
+class NotifyConfig(Base):
+    """通知配置（单行，id=1）。M10 mock：仅落地保存，推送 M+ 再做。"""
+
+    __tablename__ = "notify_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    webhook_url: Mapped[str | None] = mapped_column(Text)
+    email_to: Mapped[str | None] = mapped_column(Text)
+    email_from: Mapped[str | None] = mapped_column(Text)
+    notify_alert: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
 class Location(Base):
     __tablename__ = "location"
 
