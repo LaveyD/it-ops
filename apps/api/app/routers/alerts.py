@@ -91,4 +91,7 @@ def ack_batch(req: AlertAckBatchReq, request: Request,
     db.commit()
     audit.write_audit(user.username, "alert_ack_batch", target_type="alert",
                       target_id=str(len(found)), detail={"missing": missing}, ip=_ip(request))
+    # 批量确认触发 webhook 通知（后台 task，未配 webhook 静默跳过）
+    from .. import notify as _notify
+    _notify.fire_ack_notify(len(found), missing, user.username)
     return {"acked": len(found), "missing": missing}

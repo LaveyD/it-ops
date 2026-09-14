@@ -137,6 +137,9 @@ async def run_collection() -> None:
                  "created_at": a.created_at, "acked": a.acked}
                 for a in new_rows
             ]
+            # 严重告警触发 webhook 推送（后台 task，配置关闭静默跳过）
+            from . import notify as _notify
+            _notify.fire_alert_notify([p for p in payload["alerts"] if p["level"] == "crit"])
 
         if batch["metrics"]:
             payload["top"] = {"metric": "cpu", "items": _top_cpu(db)}

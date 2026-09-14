@@ -69,10 +69,10 @@
 - 配置切换：`.env` `COLLECTOR=prometheus` + `PROMETHEUS_URL`；mock 保留作演示/降级
 - **验收**：本地起 Prometheus 喂样例数据 → `COLLECTOR=prometheus` 重启后端 → 大屏指标/告警来自真实查询；mock 模式回归不破坏
 
-### M12 运维动作 + 通知落地 📋
+### M12 运维动作 + 通知落地 📋（通知框架已先行落地）
+- **通知框架 ✅（2026-09 提前完成，未整里程碑）**：`app/notify.py` — 企微/钉钉/飞书/通用 webhook 报文自动识别 + httpx 发送（超时/重试）+ 审计；触发点：采集轮 crit 告警（notify_alert 开关）、告警批量确认、后台"发送测试消息"（POST /api/notify-config/test）；本地抓包 e2e 验证；邮件渠道仍为预留
 - **Operator 落地**：`operators/` 现 NoopOperator（全 501）。接 SSH 通道（paramiko）支持动作集：`reboot / power_on / power_off / console`；DeviceDrawer 操作 Tab 由占位变真实按钮 + 二次确认 + 结果回显
-- **通知真实推送**：notify_config 已有 webhook 字段，落企业微信/钉钉/飞书 markdown 机器人；触发时机：crit 告警产生 + 批量告警确认；失败重试 + 审计
-- **验收**：webhook 指向本地 mock 服务验证报文格式；crit 告警产生后 <5s 收到推送；动作执行全链路审计可查
+- **验收**：webhook 指向本地 mock 服务验证报文格式（已完成）；crit 告警产生后 <5s 收到推送（框架已具备，待真实 crit 触发或测试端点验证）；动作执行全链路审计可查（待 Operator）
 
 ### M+ 远期（不在当前排期）
 - 指标表分区 / TimescaleDB（数据量持续增长后）

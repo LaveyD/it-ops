@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 系统管理 · 通知配置：渠道表单（webhook / 邮件）仅落地保存，推送 M+ 再做
+// 系统管理 · 通知配置：webhook（企微/钉钉/飞书/通用）实际推送 + 测试发送
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../../api'
@@ -10,6 +10,7 @@ const form = reactive({
 const meta = ref<{ updated_by: string | null; updated_at: string } | null>(null)
 const loading = ref(false)
 const saving = ref(false)
+const testing = ref(false)
 
 async function load() {
   loading.value = true
@@ -37,6 +38,18 @@ async function save() {
   } catch (e: unknown) { ElMessage.error(e instanceof Error ? e.message : '保存失败') }
   finally { saving.value = false }
 }
+async function testSend() {
+  testing.value = true
+  try {
+    const r = await api.testNotify()
+    if (r.ok) {
+      ElMessage.success(`测试消息已发送（${r.platform}，HTTP ${r.status_code}）`)
+    } else {
+      ElMessage.error(`发送失败：${r.error ?? 'HTTP ' + r.status_code}（请检查 URL 是否可达、机器人 token 是否正确）`)
+    }
+  } catch (e: unknown) { ElMessage.error(e instanceof Error ? e.message : '发送失败') }
+  finally { testing.value = false }
+}
 
 onMounted(load)
 </script>
@@ -52,19 +65,25 @@ onMounted(load)
       </template>
 
       <el-alert class="note" type="info" :closable="false" show-icon
-        title="M10 阶段仅落地保存配置；实际推送（webhook / 邮件）在后续里程碑接入。" />
+        title="Webhook 推送已接入：保存 URL 后，严重（crit）告警产生时自动推送；告警批量确认后同步推送。邮件渠道为预留项，暂仅保存配置。" />
 
       <el-form label-width="110px" class="form">
-        <el-divider content-position="left">Webhook</el-divider>
+        <el-divider content-position="left">Webhook（企业微信 / 钉钉 / 飞书 / 通用）</el-divider>
         <el-form-item label="Webhook URL">
-          <el-input v-model="form.webhook_url" placeholder="https://…/hook （如飞书 / 钉钉机器人）" clearable />
+          <el-input v-model="form.webhook_url" placeholder="https://…/hook （按域名自动识别平台报文格式）" clearable />
         </el-form-item>
         <el-form-item label="严重告警推送">
           <el-switch v-model="form.notify_alert" />
-          <span class="dim">开启后，严重（alert）告警触发时推送（推送逻辑 M+ 接入）</span>
+          <span class="dim">开启后，严重（crit）告警产生时自动推送到上方 Webhook</span>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="testing" :disabled="!form.webhook_url.trim()" @click="testSend">
+            发送测试消息
+          </el-button>
+          <span class="dim">保存后点击，向 Webhook 发一条测试消息验证链路</span>
         </el-form-item>
 
-        <el-divider content-position="left">邮件</el-divider>
+        <el-divider content-position="left">邮件（预留，暂仅保存配置）</el-divider>
         <el-form-item label="收件人">
           <el-input v-model="form.email_to" placeholder="ops@example.com（多个用英文逗号分隔）" clearable />
         </el-form-item>

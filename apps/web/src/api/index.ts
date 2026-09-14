@@ -91,6 +91,8 @@ export const api = {
   notifyConfig: () => request<import('../types').NotifyConfig>('/api/notify-config'),
   saveNotifyConfig: (body: Partial<import('../types').NotifyConfig>) =>
     request<import('../types').NotifyConfig>('/api/notify-config', { method: 'PUT', body: JSON.stringify(body) }),
+  testNotify: () => request<{ platform: string; ok: boolean; status_code?: number; error?: string }>(
+    '/api/notify-config/test', { method: 'POST' }),
   // 审计 CSV 导出：token 在 localStorage（query 传参后端不支持），走 fetch blob
   async downloadAuditExport(q?: Record<string, string>): Promise<void> {
     const token = localStorage.getItem('token')

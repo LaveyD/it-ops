@@ -108,12 +108,15 @@ RBAC：JWT payload 带 `role`（`admin`/`operator`/`viewer`）；`require_role(.
 | GET | `/api/audit` | 分页 + 筛选：`username`/`action`/`target_type`/`target_id`（精确）`page`/`page_size` |
 | GET | `/api/audit/export` | 同筛选条件导出 CSV（UTF-8 BOM，`it-ops-audit.csv`） |
 
-### 8.3 通知配置（A，mock 落地）
+### 8.3 通知配置（A；webhook 推送已接入）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/notify-config` | 单行配置 `{webhook_url, email_to, email_from, notify_alert, updated_by, updated_at}` |
-| PUT | `/api/notify-config` | 更新（空串→NULL）；写审计 `notify_config_update`；**仅落地保存，推送 M+ 接入** |
+| PUT | `/api/notify-config` | 更新（显式 null=清空，空串→NULL）；写审计 `notify_config_update` |
+| POST | `/api/notify-config/test` | 向已保存 webhook 发测试消息，返回 `{platform, ok, status_code?, error?}`；未配 URL 400；写审计 `notify_test` |
+
+推送行为（`app/notify.py`）：按 URL host 识别 企微/钉钉/飞书/通用 四种报文；超时 5s、失败重试 1 次；触发点=采集轮 crit 告警（`notify_alert` 开启且配了 webhook）+ 告警批量确认；发送结果写审计 `notify_send`。邮件渠道预留，仅保存配置。
 
 ### 8.4 位置 / 机房 / 机柜（M7，写 A/O，读全部登录）
 
