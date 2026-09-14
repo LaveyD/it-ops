@@ -27,6 +27,7 @@ const statusMsg = ref('')
 const statusWarn = ref(false)
 const stat = ref('')
 const zoom = ref('100%')
+const nodeStyle = ref('flat') // flat=扁平圆（新默认）/ cube=等距立方体（原样式）
 
 // 节点/连线面板
 const tab = ref<'global' | 'node' | 'link'>('global')
@@ -176,6 +177,12 @@ function onTool(act) {
   }
   else if (act === 'group') { const r = engine?.groupFromSelection(); if (r) { setStatus(r.msg, !r.ok); if (r.ok) dirty.value = true; updateStat() } }
   else if (act === 'ungroup') { const r = engine?.ungroupCurrent(); if (r) { setStatus(r.msg, !r.ok); if (r.ok) dirty.value = true; updateStat() } }
+  else if (act === 'style') {
+    const next = nodeStyle.value === 'flat' ? 'cube' : 'flat'
+    nodeStyle.value = next
+    engine?.setNodeStyle(next)
+    setStatus(next === 'flat' ? '已切换：扁平节点' : '已切换：立体节点')
+  }
   zoom.value = engine?.zoomInfo() || zoom.value
 }
 function addDevice(key) {
@@ -220,18 +227,19 @@ function saveGroup() {
 }
 
 // 保存 / 版本
-async function saveTopology() {
+async function saveTopology(asNew = false) {
   const canvas = engine?.serialize()
   if (!canvas) return
   saving.value = true
-  setStatus('保存中…')
+  setStatus(asNew ? '另存为新版本…' : '保存中…')
   try {
     const name = activeTopo.value?.name || '默认拓扑'
-    const v = await api.saveTopology(name, canvas)
-    setStatus(`已保存为新版本 v${v.version}${v.is_active ? '（已激活）' : ''}`)
+    // 保存 = 覆盖当前生效版本（asNew=false）；另存为 = 新建版本
+    const v = await api.saveTopology(name, canvas, asNew ? null : (activeTopo.value?.id ?? null))
+    if (asNew) setStatus(`已另存为新版本 v${v.version}${v.is_active ? '（已激活）' : ''}`)
+    else setStatus(`已保存当前版本 v${v.version}${v.is_active ? '（生效）' : ''}`)
     dirty.value = false
-    activeTopo.value.id = v.id
-    activeTopo.value.version = v.version
+    if (activeTopo.value) { activeTopo.value.id = v.id; activeTopo.value.version = v.version }
     await loadAll()
     emit('saved')
   } catch (e) {
@@ -362,7 +370,10 @@ defineExpose({
           <button title="将选中节点设为分组（先 Ctrl+点击多选）" @click="onTool('group')">⧉</button>
           <button title="解散分组" @click="onTool('ungroup')">⨯</button>
           <span class="sep"></span>
-          <button class="primary" title="保存为新版本" :disabled="saving" @click="saveTopology">💾 保存</button>
+          <button :title="nodeStyle === 'flat' ? '切换为立体节点（等距立方体）' : '切换为扁平节点（圆）'" @click="onTool('style')">{{ nodeStyle === 'flat' ? '◻' : '⬢' }}</button>
+          <span class="sep"></span>
+          <button class="primary" title="保存当前版本（覆盖，不产生新版本号）" :disabled="saving" @click="saveTopology(false)">💾 保存</button>
+          <button class="text-btn" title="另存为新版本（版本号 +1）" :disabled="saving" @click="saveTopology(true)">⎘ 另存为</button>
           <span class="zoom-label">{{ zoom }}</span>
           <span class="stat">{{ stat }}</span>
         </div>
@@ -489,6 +500,8 @@ defineExpose({
 .toolbar button { width: 32px; height: 32px; border: 1px solid transparent; background: none; border-radius: 5px; font-size: 15px; cursor: pointer; color: var(--text); }
 .toolbar button:hover { background: rgba(47,123,255,.15); border-color: var(--border); }
 .toolbar button.primary { width: auto; padding: 0 14px; background: var(--accent); color: #fff; border-color: var(--accent); font-size: 13px; }
+.toolbar button.text-btn { width: auto; padding: 0 12px; background: none; border-color: var(--border); color: var(--text); font-size: 13px; }
+.toolbar button.text-btn:hover { background: rgba(47,123,255,.15); }
 .toolbar button.primary:disabled { opacity: .6; cursor: not-allowed; }
 .sep { width: 1px; height: 20px; background: var(--border); margin: 0 7px; }
 .zoom-label { font-size: 12.5px; color: var(--text-dim); margin-left: 4px; min-width: 44px; }

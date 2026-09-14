@@ -157,8 +157,165 @@ export function nodeState(node, devices) {
   return 'normal'
 }
 
-// 覆盖默认节点绘制：优先官方 3D 图标 + 四态效果，未加载图标时回退手绘立方体
-function makeDrawNode(graph, device, dark) {
+// 扁平节点样式（TDDC 风）：类型色描边圆 + 内部 glyph + 状态角标。
+// 类型色独立于 cube 模式的节点 base 色（后者按种子数据 color 存）。
+export const FLAT_TYPE_COLOR = {
+  router: '#36b37e', firewall: '#f56c6c', switch: '#409eff', server: '#a78bfa',
+  loadbalancer: '#2dd4bf', storage: '#f59e0b', app: '#7dd3fc', mgmt: '#e879a9',
+  gateway: '#fb923c', idc: '#818cf8', room: '#818cf8', collect: '#94a3b8',
+  sec: '#fb7185', cloud: '#67e8f9', home: '#fbbf24', corp: '#a78bfa',
+  factory: '#f97316', apt: '#c084fc', atm: '#818cf8', aggr: '#38bdf8',
+  core: '#2dd4bf', db: '#a78bfa', pool: '#fbbf24', plat: '#e879a9',
+  biz: '#7dd3fc', optic: '#60a5fa', '1u': '#a78bfa', '2u': '#a78bfa',
+}
+export const FLAT_STATUS_DOT = { warn: '#faad14', alert: '#ff4d4f', unmanaged: '#8b98ab' }
+const FLAT_GLYPH = {
+  // 类型 → 复用 drawGlyph 的 case key
+  router: 'router', firewall: 'firewall', switch: 'switch', server: 'server',
+  loadbalancer: 'switch', storage: 'db', app: 'biz', mgmt: 'mgmt', gateway: 'gateway',
+  idc: 'idc', room: 'idc', collect: 'collect', sec: 'firewall', cloud: 'pool',
+  home: 'pool', corp: 'idc', factory: 'mgmt', apt: 'idc', atm: 'router',
+  aggr: 'switch', core: 'switch', db: 'db', pool: 'pool', plat: 'mgmt',
+  biz: 'biz', optic: 'biz', '1u': 'server', '2u': 'server',
+}
+// 连线箭头 + 速率标签：引擎原生 showArrow/text 实测不渲染，改 paint 覆盖自绘。
+// 端点取 getStartPosition/getEndPosition（数据坐标），箭头指向 target。
+function linkArrowPaint(orig) {
+  return function (ctx, needHideText) {
+    orig.call(this, ctx, needHideText)
+    try {
+      const hasArrow = !!this._arrowColor
+      const label = this._arrowLabel
+      if (!hasArrow && !label) return
+      const s = this.getStartPosition()
+      const e = this.getEndPosition()
+      if (!s || !e) return
+      if (hasArrow) {
+        const dx = e.x - s.x, dy = e.y - s.y
+        const len = Math.hypot(dx, dy) || 1
+        const ux = dx / len, uy = dy / len
+        const a = 12, w = 6
+        const px = -uy, py = ux
+        ctx.save()
+        ctx.fillStyle = this._arrowColor
+        ctx.beginPath()
+        ctx.moveTo(e.x, e.y)
+        ctx.lineTo(e.x - ux * a + px * w, e.y - uy * a + py * w)
+        ctx.lineTo(e.x - ux * a - px * w, e.y - uy * a - py * w)
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+      if (label) {
+        const mx = (s.x + e.x) / 2, my = (s.y + e.y) / 2
+        ctx.save()
+        ctx.font = '10px "Microsoft YaHei", Arial'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        const tw = ctx.measureText(label).width
+        ctx.fillStyle = this._arrowLabelBg || 'rgba(13,26,48,0.82)'
+        ctx.fillRect(mx - tw / 2 - 3, my - 8, tw + 6, 14)
+        ctx.fillStyle = this._arrowLabelColor || 'rgba(170,195,225,0.95)'
+        ctx.fillText(label, mx, my)
+        ctx.restore()
+      }
+    } catch (err) { /* ignore */ }
+  }
+}
+// 覆盖默认节点绘制：flat 模式画扁平圆，cube 模式走官方 3D 图标/手绘立方体
+function makeFlatDrawNode(graph, device, dark) {
+  return function (ctx) {
+    const R = this.radius || 30
+    const base = device.c || '120,140,180'
+    const isSel = !!this.selected || (graph && graph.currentNode === this)
+    const state = nodeState(this, graph._devices || {})
+    const typeColor = FLAT_TYPE_COLOR[this.type] || '#' + toHex(base)
+
+    // 告警/警告光晕（与 cube 模式同节奏）
+    if (state === 'warn' || state === 'alert') {
+      const col = STATUS_RGB[state]
+      const t = performance.now() / 1000
+      const pulse = state === 'alert' ? (0.45 + 0.4 * (0.5 + 0.5 * Math.sin(t * 3.2))) : 0.5
+      ctx.save()
+      ctx.globalAlpha = pulse
+      ctx.shadowColor = 'rgba(' + col + ',1)'
+      ctx.shadowBlur = R * 0.9
+      ctx.fillStyle = 'rgba(' + col + ',' + (0.28 * pulse + 0.1) + ')'
+      ctx.beginPath(); ctx.arc(0, 0, R * 1.25, 0, Math.PI * 2); ctx.fill()
+      ctx.restore()
+    }
+    if (isSel) {
+      ctx.save()
+      ctx.strokeStyle = 'rgba(47,123,255,0.9)'
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.beginPath(); ctx.arc(0, 0, R * 1.45, 0, Math.PI * 2); ctx.stroke()
+      ctx.restore()
+    }
+
+    // 主体圆：白底（深底）+ 类型色描边
+    ctx.save()
+    if (state === 'unmanaged') ctx.globalAlpha = 0.72
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2)
+    ctx.fillStyle = dark ? 'rgba(23,36,58,0.92)' : '#ffffff'
+    ctx.fill()
+    ctx.lineWidth = Math.max(2, R * 0.11)
+    ctx.strokeStyle = typeColor
+    ctx.stroke()
+    // 内部 glyph（类型色）
+    ctx.globalAlpha = state === 'unmanaged' ? 0.55 : 0.95
+    ctx.strokeStyle = typeColor
+    ctx.fillStyle = typeColor
+    drawGlyph(ctx, FLAT_GLYPH[this.type] || 'biz', R * 0.72)
+    ctx.restore()
+
+    // 状态角标（右上）
+    if (state === 'warn' || state === 'alert' || state === 'unmanaged') {
+      const cx = R * 0.72, cy = -R * 0.72, r = R * 0.22
+      const col = FLAT_STATUS_DOT[state]
+      if (state === 'alert') {
+        const t = performance.now() / 1000
+        const pulse = 0.5 + 0.5 * Math.sin(t * 3.2)
+        ctx.save()
+        ctx.globalAlpha = pulse
+        ctx.shadowColor = col
+        ctx.shadowBlur = r * 3
+        ctx.fillStyle = col
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill()
+        ctx.restore()
+      } else {
+        ctx.save()
+        ctx.fillStyle = col
+        ctx.strokeStyle = dark ? 'rgba(13,26,48,0.9)' : '#ffffff'
+        ctx.lineWidth = 2
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+        ctx.restore()
+      }
+    }
+
+    // 标签（hideLabels 模式：默认隐藏，hover 浮层展示；选中节点仍显示）
+    if (!(graph && graph._hideLabels) || isSel) {
+    ctx.save()
+    ctx.font = '11px "Microsoft YaHei", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    const ly = R + 6
+    let label = this.label || ''
+    if (state === 'warn' || state === 'alert') label += ' ⚠'
+    if (state === 'unmanaged') label += ' · 未纳管'
+    const w = ctx.measureText(label).width
+    ctx.globalAlpha = 1
+    ctx.fillStyle = dark ? 'rgba(13,26,48,0.82)' : 'rgba(255,255,255,0.85)'
+    ctx.fillRect(-w / 2 - 4, ly - 2, w + 8, 17)
+    ctx.fillStyle = dark ? '#cfe0f5' : '#3a4150'
+    if (state === 'unmanaged') ctx.fillStyle = dark ? '#8ea3bf' : '#8a97a8'
+    ctx.fillText(label, 0, ly)
+    ctx.restore()
+    }
+  }
+}
+function makeDrawNode(graph, device, dark, flat) {
+  if (flat) return makeFlatDrawNode(graph, device, dark)
   return function (ctx) {
     const R = this.radius || 30
     const base = this.fillColor || device.c
@@ -209,7 +366,8 @@ function makeDrawNode(graph, device, dark) {
       imgBottom = 2 * R * 0.6 + R * 0.95
     }
 
-    // 标签
+    // 标签（hideLabels 模式：默认隐藏，hover 浮层展示；选中节点仍显示）
+    if (!(graph && graph._hideLabels) || isSel) {
     ctx.save()
     ctx.font = '12px "Microsoft YaHei", sans-serif'
     ctx.textAlign = 'center'
@@ -226,6 +384,7 @@ function makeDrawNode(graph, device, dark) {
     if (state === 'unmanaged') ctx.fillStyle = dark ? '#8ea3bf' : '#8a97a8'
     ctx.fillText(label, 0, ly)
     ctx.restore()
+    }
   }
 }
 
@@ -351,6 +510,7 @@ export function serializeGraph(graph) {
     target: (l.target && typeof l.target === 'object') ? l.target.id : l.target,
     label: l.label, type: l.type, color: l.color,
     lineWidth: l.lineWidth, lineDash: l.lineDash, showArrow: l.showArrow,
+    properties: l.properties || {},
   }))
   const groups = getGroups(graph).map((gr) => ({
     label: gr.label, shape: gr.shape || 'rect',
@@ -415,8 +575,11 @@ export class TopoEngine {
   constructor(container, opts = {}) {
     this.container = container
     this.opts = opts
+    // 节点样式：flat=扁平圆（TDDC 风，新默认）；cube=等距立方体（原样式）。可运行时 setNodeStyle 切换
+    if (!this.opts.nodeStyle) this.opts.nodeStyle = 'flat'
     this.graph = null
     this._devices = {}
+    this._lastCanvas = null
     this._raf = null
     this._undo = []
     this._redo = []
@@ -463,6 +626,7 @@ export class TopoEngine {
     }
     // 大屏：hover 交给 Vue 壳的 mousemove 拾取，这里不处理
     this.graph = new G(this.container, cfg)
+    this.graph._hideLabels = !!this.opts.hideLabels
     window.__topo = this // 调试用（同 demo 的 window.__gv）
     if (this.graph.setZoomRange) { try { this.graph.setZoomRange(0.2, 3) } catch (e) { /* ignore */ } }
     // 预加载官方 3D 图标：每加载完一张重绘一次，节点从手绘立方体切换到 3D 图标
@@ -518,6 +682,7 @@ export class TopoEngine {
   renderCanvas(canvas) {
     const g = this.graph
     if (!g || !canvas) return
+    this._lastCanvas = canvas
     if (g.clearAll) { try { g.clearAll() } catch (e) { /* ignore */ } }
     else {
       if (g.deleteLinks) { try { g.deleteLinks((g.links || []).slice()) } catch (e) { /* ignore */ } }
@@ -530,16 +695,63 @@ export class TopoEngine {
     this._hookSelection()
   }
 
+  // 运行时切换节点样式（flat/cube）：存样式后用最近一次 canvas 整图重绘
+  setNodeStyle(style) {
+    if (style !== 'flat' && style !== 'cube') return
+    if (this.opts.nodeStyle === style) return
+    this.opts.nodeStyle = style
+    if (this._lastCanvas) this.renderCanvas(this._lastCanvas)
+  }
+  getNodeStyle() { return this.opts.nodeStyle }
+
   // drawData 之后给节点实例绑定 3D 绘制（引擎会重建节点对象，数据上的函数会被丢弃）
   decorate() {
     const g = this.graph
     const dark = !!this.opts.dark
+    const flat = this.opts.nodeStyle === 'flat'
     ;(g.nodes || []).forEach((n) => {
       n.fillColor = n.fillColor || n.color
       n.properties = n.properties || {}
-      n.drawNode = makeDrawNode(g, DEVICE_MAP[n.type] || DEVICES[0], dark)
+      n.drawNode = makeDrawNode(g, DEVICE_MAP[n.type] || DEVICES[0], dark, flat)
     })
+    this._decorateLinks(flat)
     if (g.refresh) g.refresh()
+  }
+
+  // 连线装饰：箭头 + 速率标签 + faulty 红线。
+  // 引擎原生 showArrow/text 实测不渲染 → 覆盖 paint 自绘（arrowColor/label 挂到 link 实例）。
+  _decorateLinks(flat) {
+    const g = this.graph
+    const dark = !!this.opts.dark
+    ;(g.links || []).forEach((l) => {
+      const lp = l.properties || {}
+      const faulty = lp.status === 'faulty'
+      // 线色：faulty 红虚线；flat 模式统一中性蓝灰
+      if (faulty) {
+        l.strokeColor = 'rgba(255,77,79,1)'
+        if (!l.lineDash) l.lineDash = [8, 5]
+      } else if (flat) {
+        l.strokeColor = dark ? 'rgba(110,140,190,0.8)' : 'rgba(100,125,160,0.85)'
+      }
+      // 箭头 + 速率标签（仅 flat 模式开启）
+      if (flat) {
+        l._arrowColor = faulty ? 'rgba(255,90,90,1)' : (dark ? 'rgba(140,170,215,0.95)' : 'rgba(80,105,140,0.95)')
+        l._arrowLabel = lp.speed || ''
+        l._arrowLabelBg = dark ? 'rgba(13,26,48,0.82)' : 'rgba(255,255,255,0.85)'
+        l._arrowLabelColor = faulty ? 'rgba(255,120,120,1)' : (dark ? 'rgba(180,205,235,0.95)' : 'rgba(70,90,120,0.95)')
+        if (!l._arrowPaint) l._arrowPaint = true
+        const orig = l.paint
+        // 只包一层，避免 renderCanvas 重绘后重复包裹
+        if (!l._arrowWrapped) {
+          l.paint = linkArrowPaint(orig)
+          l._arrowWrapped = true
+        }
+      } else {
+        // cube 模式：清除 flat 标记
+        l._arrowColor = null
+        l._arrowLabel = ''
+      }
+    })
   }
 
   // 刷新设备状态映射（不重画全图，仅下一帧自然重绘）
@@ -599,7 +811,7 @@ export class TopoEngine {
     const y = props.y != null ? props.y : c.y + (Math.random() * 120 - 60)
     g.addNode({ id, label: props.label || d.name, type: props.type, color: props.color || d.c, x, y, size: props.size || 60, properties: props.properties || {} })
     const nd = this.findNodeSafe(id) || g.nodes[g.nodes.length - 1]
-    if (nd) { nd.fillColor = nd.color; nd.drawNode = makeDrawNode(g, DEVICE_MAP[props.type] || DEVICES[0], !!this.opts.dark); nd.dragable = true }
+    if (nd) { nd.fillColor = nd.color; nd.drawNode = makeDrawNode(g, DEVICE_MAP[props.type] || DEVICES[0], !!this.opts.dark, this.opts.nodeStyle === 'flat'); nd.dragable = true }
     if (g.refresh) g.refresh()
     this.snapshot()
     return nd

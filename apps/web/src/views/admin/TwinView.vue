@@ -32,7 +32,7 @@ const unackedCount = computed(() => alerts.value.length)
 // ===== 类型图层（保留原 M9 能力） =====
 const LAYER_GROUPS = [
   { key: 'router', label: '路由器', types: ['router', 'atm'] },
-  { key: 'switch', label: '交换机', types: ['core', 'switch', 'aggr', '1u', '2u'] },
+  { key: 'switch', label: '交换机', types: ['core', 'switch', 'aggr', 'loadbalancer', '1u', '2u'] },
   { key: 'firewall', label: '安全设备', types: ['firewall', 'sec'] },
   { key: 'server', label: '服务器', types: ['server', '1u', '2u'] },
   { key: 'data', label: '数据/资源', types: ['db', 'pool', 'cloud', 'idc'] },

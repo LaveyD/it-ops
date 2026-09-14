@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import audit
 from ..db import get_db
-from ..models import Device, Topology, TopologyNodeDevice, User
+from ..models import Device, Topology, TopologyNodeDevice, User, _utcnow
 from ..routers.auth import get_current_user
 from ..schemas import TopologyRenameReq, TopologySaveReq, TopologyVersionItem
 from ..security import require_role
@@ -138,17 +138,29 @@ def save_topology(req: TopologySaveReq, request: Request,
         if missing:
             raise HTTPException(422, {"detail": "关联设备不存在", "missing_devices": missing})
 
-    # 版本递增 + 首次保存自动激活
-    latest = db.scalar(select(Topology).order_by(Topology.version.desc()).limit(1))
-    has_active = db.scalar(select(Topology.id).where(Topology.is_active.is_(True)))
-    topo = Topology(
-        name=req.name or (latest.name if latest else "默认拓扑"),
-        canvas=req.canvas,
-        version=(latest.version + 1) if latest else 1,
-        is_active=has_active is None,
-    )
-    db.add(topo)
-    db.flush()
+    # 保存语义：
+    #   传 target_id → 覆盖该版本（canvas/updated_at 更新，版本号不变）
+    #   不传         → 新建版本（version+1，首个版本自动激活）
+    if req.target_id is not None:
+        topo = db.get(Topology, req.target_id)
+        if topo is None:
+            raise HTTPException(404, "目标版本不存在")
+        topo.name = req.name or topo.name
+        topo.canvas = req.canvas
+        topo.updated_at = _utcnow()
+        new_version = False
+    else:
+        latest = db.scalar(select(Topology).order_by(Topology.version.desc()).limit(1))
+        has_active = db.scalar(select(Topology.id).where(Topology.is_active.is_(True)))
+        topo = Topology(
+            name=req.name or (latest.name if latest else "默认拓扑"),
+            canvas=req.canvas,
+            version=(latest.version + 1) if latest else 1,
+            is_active=has_active is None,
+        )
+        db.add(topo)
+        db.flush()
+        new_version = True
 
     # 物化关联
     db.execute(delete(TopologyNodeDevice).where(TopologyNodeDevice.topology_id == topo.id))
@@ -158,7 +170,8 @@ def save_topology(req: TopologySaveReq, request: Request,
     db.commit()
     db.refresh(topo)
     audit.write_audit(user.username, "topology_save", target_type="topology",
-                      target_id=str(topo.id), detail={"version": topo.version}, ip=_ip(request))
+                      target_id=str(topo.id), detail={"version": topo.version,
+                      "new_version": new_version}, ip=_ip(request))
     return topo
 
 

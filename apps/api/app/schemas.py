@@ -111,6 +111,8 @@ class NotifyConfigUpdate(BaseModel):
 class TopologySaveReq(BaseModel):
     name: str | None = None
     canvas: dict = Field(..., description="{nodes[], links[], groups[]}")
+    # 传 target_id = 覆盖该版本（保存当前版本）；不传 = 新建版本
+    target_id: int | None = None
 
 
 class TopologyRenameReq(BaseModel):

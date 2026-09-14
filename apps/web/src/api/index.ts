@@ -53,8 +53,8 @@ export const api = {
   alertStats: (days = 7) => request<import('../types').AlertDailyCount[]>(`/api/alerts/stats?days=${days}`),
   ackAlert: (id: number) => request<{ id: number; acked: boolean }>(`/api/alerts/${id}/ack`, { method: 'POST' }),
   topologyVersions: () => request<import('../types').TopologyVersion[]>('/api/topology/versions'),
-  saveTopology: (name: string | null, canvas: unknown) =>
-    request<import('../types').TopologyVersion>('/api/topology', { method: 'POST', body: JSON.stringify({ name, canvas }) }),
+  saveTopology: (name: string | null, canvas: unknown, targetId?: number | null) =>
+    request<import('../types').TopologyVersion>('/api/topology', { method: 'POST', body: JSON.stringify({ name, canvas, target_id: targetId ?? null }) }),
   activateTopology: (id: number) =>
     request<import('../types').TopologyVersion>(`/api/topology/${id}/activate`, { method: 'POST' }),
   renameTopology: (id: number, name: string) =>

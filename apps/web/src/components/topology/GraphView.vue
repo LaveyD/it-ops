@@ -17,6 +17,8 @@ const props = defineProps<{
   filter?: { q?: string; status?: string; onlyAbnormal?: boolean; hiddenTypes?: string[] }
   // M8 版本查看：外部指定 canvas（非生效版本快照）；不传则用 active
   externalCanvas?: { nodes: unknown[]; links: unknown[]; groups?: unknown[] } | null
+  // 隐藏节点名称标签（大屏模式）：默认隐藏，hover 浮层展示名称
+  hideLabels?: boolean
 }>()
 const box = ref<HTMLElement>()
 const active = ref<TopologyActive | null>(null)
@@ -25,6 +27,7 @@ let engine: TopoEngine | null = null
 
 // hover 浮层状态
 const tip = ref({ show: false, x: 0, y: 0, nodeId: '', label: '', deviceId: '', status: '', ip: '' })
+const nodeStyle = ref('flat') // 大屏节点样式切换：flat 扁平圆 / cube 立体立方体
 
 let poll: ReturnType<typeof setInterval> | null = null
 let offFeed: (() => void) | null = null
@@ -83,6 +86,11 @@ async function load() {
       lastAlerts.value = m
     } catch (e) { /* ignore */ }
   } catch (e) { console.error(e) }
+}
+
+function toggleNodeStyle() {
+  nodeStyle.value = nodeStyle.value === 'flat' ? 'cube' : 'flat'
+  engine?.setNodeStyle(nodeStyle.value)
 }
 
 function onNodeClick(node) {
@@ -148,6 +156,8 @@ onMounted(async () => {
   engine = new TopoEngine(box.value!, {
     dark: true,
     readOnly: true,
+    nodeStyle: nodeStyle.value,
+    hideLabels: props.hideLabels,
     onNodeClick,
     onEmptyClick: () => { tip.value.show = false },
   })
@@ -207,6 +217,7 @@ const statusText: Record<string, string> = { normal: '正常', warn: '警告', a
 
 <template>
   <div ref="box" class="gv" @mousemove="onMove" @mouseleave="tip.show = false" @dblclick="onDblClick">
+    <button class="style-toggle" :title="nodeStyle === 'flat' ? '切换为立体节点（等距立方体）' : '切换为扁平节点（圆）'" @click.stop="toggleNodeStyle">{{ nodeStyle === 'flat' ? '⬢' : '◻' }}</button>
     <div v-if="tip.show" class="tip" :style="{ left: tip.x + 'px', top: tip.y + 'px' }">
       <div class="tip-name">{{ tip.label }} <span :class="'s-' + tip.status">{{ statusText[tip.status] }}</span></div>
       <div v-if="tip.deviceId" class="tip-row">IP: {{ tip.ip }}</div>
@@ -220,6 +231,13 @@ const statusText: Record<string, string> = { normal: '正常', warn: '警告', a
 
 <style scoped>
 .gv { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.style-toggle {
+  position: absolute; top: 10px; right: 10px; z-index: 12;
+  width: 30px; height: 30px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: rgba(13,26,48,.7);
+  color: var(--text-dim); font-size: 15px; line-height: 1;
+}
+.style-toggle:hover { color: var(--text); background: rgba(47,123,255,.2); }
 .tip {
   position: absolute; z-index: 10; width: 200px; pointer-events: none;
   background: rgba(10, 20, 40, 0.95); border: 1px solid var(--border); border-radius: 8px;

@@ -103,7 +103,7 @@ onUnmounted(() => {
           <span class="dim" v-if="overview.topology">{{ overview.topology.name }} v{{ overview.topology.version }} · 点击节点查看设备</span>
         </div>
         <div class="topo-canvas">
-          <GraphView ref="gv" @open-device="openDevice" />
+          <GraphView ref="gv" hide-labels @open-device="openDevice" />
         </div>
       </div>
 

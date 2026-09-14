@@ -49,6 +49,7 @@ const groups: MenuGroup[] = [
   { title: '网络与连接', items: [
     { index: '/admin/network/topology', title: '网络拓扑' },
     { index: '/admin/network/links', title: '链路视图' },
+    { index: '/admin/network/topo3d', title: '3D 拓扑预览' },
   ]},
   { title: '数字孪生', items: [
     { index: '/admin/twin', title: '状态孪生' },

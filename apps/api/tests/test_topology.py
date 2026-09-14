@@ -69,6 +69,37 @@ def test_topology_save_new_version(client, auth):
         _delete_topology(new_id)
 
 
+def test_topology_save_overrides_current_version(client, auth):
+    """保存当前版本（target_id）：canvas 覆盖、版本号不变、不新增行。"""
+    base = client.get("/api/topology/active", headers=auth).json()
+    canvas = {
+        "nodes": [{"id": "o1", "label": "覆盖节点", "type": "server", "color": "1,2,3",
+                   "x": 5, "y": 5, "size": 60, "properties": {}}],
+        "links": [],
+    }
+    before_count = len(client.get("/api/topology/versions", headers=auth).json())
+    r = client.post("/api/topology", headers=auth,
+                    json={"name": base["name"], "canvas": canvas, "target_id": base["id"]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == base["id"]
+    assert body["version"] == base["version"]  # 版本号不变
+    assert body["is_active"] is True
+    # 覆盖生效
+    active = client.get("/api/topology/active", headers=auth).json()
+    assert [n["id"] for n in active["canvas"]["nodes"]] == ["o1"]
+    # 未新增版本行
+    assert len(client.get("/api/topology/versions", headers=auth).json()) == before_count
+    # 恢复原 canvas
+    r2 = client.post("/api/topology", headers=auth,
+                     json={"name": base["name"], "canvas": base["canvas"], "target_id": base["id"]})
+    assert r2.status_code == 200, r2.text
+    # 目标版本不存在 → 404
+    r3 = client.post("/api/topology", headers=auth,
+                     json={"canvas": canvas, "target_id": 99999999})
+    assert r3.status_code == 404
+
+
 def test_topology_activate_switches_active(client, auth):
     """激活另一版本：双 UPDATE 分批复行，不撞部分唯一索引 ux_topology_active。"""
     base = client.get("/api/topology/active", headers=auth).json()

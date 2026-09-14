@@ -13,61 +13,110 @@ from .models import (Alert, BizSystem, Cabinet, Device, DeviceMetric, Location, 
                      Topology, TopologyNodeDevice, User)
 from .security import hash_password
 
-# ===== 初始拓扑（来自 graph-vis-v1 示例，24 节点/25 连线 + 1 分组）=====
-INITIAL_NODES = [
-    {"id": "collect1", "label": "采集设备", "type": "collect", "color": "90,140,200", "size": 56, "x": 250, "y": 90},
-    {"id": "router1", "label": "路由器", "type": "router", "color": "46,108,220", "size": 60, "x": 180, "y": 210},
-    {"id": "router2", "label": "路由器", "type": "router", "color": "46,108,220", "size": 60, "x": 330, "y": 210},
-    {"id": "fw1", "label": "防火墙", "type": "firewall", "color": "214,80,80", "size": 56, "x": 150, "y": 340},
-    {"id": "fw2", "label": "防火墙", "type": "firewall", "color": "214,80,80", "size": 56, "x": 360, "y": 340},
-    {"id": "app1", "label": "应用系统", "type": "app", "color": "80,150,170", "size": 54, "x": 120, "y": 470},
-    {"id": "app2", "label": "应用系统", "type": "app", "color": "80,150,170", "size": 54, "x": 390, "y": 470},
-    {"id": "room", "label": "计算机房", "type": "idc", "color": "90,120,200", "size": 58, "x": 540, "y": 90},
-    {"id": "atm1", "label": "ATM路由器", "type": "atm", "color": "116,120,224", "size": 58, "x": 470, "y": 210},
-    {"id": "atm2", "label": "ATM路由器", "type": "atm", "color": "116,120,224", "size": 58, "x": 620, "y": 210},
-    {"id": "fw3", "label": "防火墙", "type": "firewall", "color": "214,80,80", "size": 56, "x": 450, "y": 340},
-    {"id": "fw4", "label": "防火墙", "type": "firewall", "color": "214,80,80", "size": 56, "x": 640, "y": 340},
-    {"id": "mgmt1", "label": "管理平台", "type": "mgmt", "color": "230,90,120", "size": 52, "x": 800, "y": 90},
-    {"id": "mgmt2", "label": "管理平台", "type": "mgmt", "color": "230,90,120", "size": 52, "x": 880, "y": 90},
-    {"id": "mgmt3", "label": "管理平台", "type": "mgmt", "color": "230,90,120", "size": 52, "x": 960, "y": 90},
-    {"id": "gw", "label": "智能家庭网关", "type": "gateway", "color": "224,110,60", "size": 58, "x": 880, "y": 220},
-    {"id": "aggr", "label": "汇聚交换机", "type": "aggr", "color": "41,128,185", "size": 62, "x": 300, "y": 600},
-    {"id": "lan", "label": "组网交换机", "type": "switch", "color": "52,152,219", "size": 62, "x": 560, "y": 600},
-    {"id": "fw5", "label": "防火墙", "type": "firewall", "color": "214,80,80", "size": 56, "x": 360, "y": 720},
-    {"id": "fw6", "label": "防火墙", "type": "firewall", "color": "214,80,80", "size": 56, "x": 500, "y": 720},
-    {"id": "home", "label": "家庭", "type": "home", "color": "224,148,66", "size": 54, "x": 240, "y": 840},
-    {"id": "corp", "label": "公司", "type": "corp", "color": "120,140,210", "size": 54, "x": 360, "y": 850},
-    {"id": "factory", "label": "工厂", "type": "factory", "color": "200,120,90", "size": 54, "x": 500, "y": 850},
-    {"id": "apt", "label": "公寓", "type": "apt", "color": "150,120,200", "size": 54, "x": 620, "y": 840},
+# ===== 初始拓扑 v2（5 分区 / 23 节点 / 23 连线，结构参考 TDDC 网络拓扑数据）=====
+# 分区色（hex）：外网紫 / 边界红 / DMZ 青 / 办公绿 / 服务器蓝
+ZONES = [
+    # label, 填充 "r,g,b", 边框 "r,g,b"
+    ("外网/专线", "114,46,209", "114,46,209"),
+    ("边界安全区", "245,34,45", "245,34,45"),
+    ("DMZ区", "19,194,194", "19,194,194"),
+    ("办公网", "82,196,26", "82,196,26"),
+    ("服务器区", "24,144,255", "24,144,255"),
 ]
-INITIAL_LINKS = [
-    ("l1", "collect1", "router1"), ("l2", "collect1", "router2"), ("l3", "router1", "fw1"),
-    ("l4", "router2", "fw2"), ("l5", "fw1", "app1"), ("l6", "fw2", "app2"),
-    ("l7", "room", "atm1"), ("l8", "room", "atm2"), ("l9", "atm1", "fw3"),
-    ("l10", "atm2", "fw4"), ("l11", "mgmt1", "gw"), ("l12", "mgmt2", "gw"),
-    ("l13", "mgmt3", "gw"), ("l14", "app1", "aggr"), ("l15", "app2", "aggr"),
-    ("l16", "fw3", "aggr"), ("l17", "gw", "lan"), ("l18", "aggr", "fw5"),
-    ("l19", "lan", "fw6"), ("l20", "fw5", "home"), ("l21", "fw5", "corp"),
-    ("l22", "fw6", "factory"), ("l23", "fw6", "apt"), ("l24", "fw5", "factory"),
-    ("l25", "fw6", "corp"),
-]
-INITIAL_GROUP = {
-    "label": "终端接入区", "shape": "round", "padding": 20, "alpha": 0.5,
-    "headerAlpha": 0.8, "borderWidth": 2, "borderColor": "80,140,255",
-    "dash": [6, 4], "font": "normal 14px Arial", "textAlign": "center",
-    "fontColor": "255,255,255", "fillColor": "40,70,140", "headerColor": "30,50,120",
-    "headerHeight": 36, "textOffsetX": 0,
-    "selectedBorderColor": "30,30,250", "selectedBorderWidth": 2,
-    "memberIds": ["home", "corp", "factory", "apt"],
+ZONE_MEMBERS = {
+    "外网/专线": ["isp-main", "isp-bak"],
+    "边界安全区": ["edge-router", "core-fw", "ips-1"],
+    "DMZ区": ["lb-1", "web-1", "web-2", "mail-1"],
+    "办公网": ["office-fw", "office-sw-core", "office-sw-acc", "ap-1", "pc-1", "pc-2"],
+    "服务器区": ["server-fw", "server-sw", "app-1", "app-2", "backup-1", "db-1", "file-1", "storage-1"],
 }
+INITIAL_NODES = [
+    # 外网/专线（顶部居中）
+    {"id": "isp-main", "label": "ISP 主专线", "type": "router", "color": "54,179,126", "size": 46, "x": 400, "y": 70},
+    {"id": "isp-bak", "label": "ISP 备专线", "type": "router", "color": "54,179,126", "size": 46, "x": 580, "y": 70},
+    # 边界安全区（中轴，核心防火墙居中）
+    {"id": "edge-router", "label": "边界路由器", "type": "router", "color": "54,179,126", "size": 46, "x": 480, "y": 265},
+    {"id": "core-fw", "label": "核心防火墙", "type": "firewall", "color": "245,108,108", "size": 46, "x": 480, "y": 380},
+    {"id": "ips-1", "label": "IPS 入侵防御", "type": "sec", "color": "251,113,133", "size": 46, "x": 300, "y": 330},
+    # DMZ（左侧纵列，整组左移拉开与边界区的间距）
+    {"id": "mail-1", "label": "邮件服务器", "type": "server", "color": "167,139,250", "size": 46, "x": 40, "y": 130},
+    {"id": "web-1", "label": "Web 服务器-A", "type": "server", "color": "167,139,250", "size": 46, "x": 20, "y": 245},
+    {"id": "web-2", "label": "Web 服务器-B", "type": "server", "color": "167,139,250", "size": 46, "x": 150, "y": 245},
+    {"id": "lb-1", "label": "负载均衡器", "type": "loadbalancer", "color": "45,212,191", "size": 46, "x": 85, "y": 365},
+    # 办公网（底部居中，中轴最下）
+    {"id": "office-fw", "label": "办公网防火墙", "type": "firewall", "color": "245,108,108", "size": 46, "x": 480, "y": 520},
+    {"id": "office-sw-core", "label": "办公核心交换机", "type": "switch", "color": "64,158,255", "size": 46, "x": 410, "y": 615},
+    {"id": "office-sw-acc", "label": "办公接入交换机", "type": "switch", "color": "64,158,255", "size": 46, "x": 575, "y": 615},
+    {"id": "ap-1", "label": "无线 AP", "type": "collect", "color": "148,163,184", "size": 46, "x": 300, "y": 700},
+    {"id": "pc-1", "label": "办公终端-1", "type": "collect", "color": "148,163,184", "size": 46, "x": 475, "y": 705},
+    {"id": "pc-2", "label": "办公终端-2", "type": "collect", "color": "148,163,184", "size": 46, "x": 650, "y": 700},
+    # 服务器区（右侧纵长条，整组右移拉开与办公网/边界的间距）
+    {"id": "server-fw", "label": "服务器区防火墙", "type": "firewall", "color": "245,108,108", "size": 46, "x": 920, "y": 235},
+    {"id": "server-sw", "label": "服务器核心交换机", "type": "switch", "color": "64,158,255", "size": 46, "x": 920, "y": 340},
+    {"id": "app-1", "label": "应用服务器-1", "type": "server", "color": "167,139,250", "size": 46, "x": 790, "y": 445},
+    {"id": "app-2", "label": "应用服务器-2", "type": "server", "color": "167,139,250", "size": 46, "x": 1010, "y": 445},
+    {"id": "db-1", "label": "数据库服务器", "type": "server", "color": "167,139,250", "size": 46, "x": 790, "y": 550},
+    {"id": "file-1", "label": "文件服务器", "type": "server", "color": "167,139,250", "size": 46, "x": 1010, "y": 550},
+    {"id": "backup-1", "label": "备份服务器", "type": "server", "color": "167,139,250", "size": 46, "x": 790, "y": 655},
+    {"id": "storage-1", "label": "核心存储", "type": "db", "color": "245,158,11", "size": 46, "x": 1010, "y": 655},
+]
 
-# 节点 -> 设备 关联（部分节点纳管）
+
+def _link(lid, src, tgt, speed, status="active", sp=None, tp=None):
+    props = {"speed": speed, "status": status}
+    if sp: props["sourcePort"] = sp
+    if tp: props["targetPort"] = tp
+    return {"id": lid, "source": src, "target": tgt, "label": "", "properties": props}
+
+
+INITIAL_LINKS = [
+    _link("l01", "isp-main", "edge-router", "10G", sp="G0/0/0", tp="Gig0/0"),
+    _link("l02", "isp-bak", "edge-router", "1G", status="faulty", sp="G0/0/0", tp="Gig0/1"),
+    _link("l03", "edge-router", "core-fw", "10G", sp="Gig0/2", tp="Gig0/0/0"),
+    _link("l04", "core-fw", "ips-1", "10G", sp="Gig0/0/1", tp="eth0"),
+    _link("l05", "ips-1", "lb-1", "10G", sp="eth1", tp="Gig0/0"),
+    _link("l06", "lb-1", "web-1", "1G", sp="Gig1/0", tp="eth1"),
+    _link("l07", "lb-1", "web-2", "1G", sp="Gig1/1", tp="eth1"),
+    _link("l08", "web-2", "mail-1", "1G", sp="eth2", tp="eth1"),
+    _link("l09", "core-fw", "office-fw", "1G", sp="Gig0/0/2", tp="Gig0/0/0"),
+    _link("l10", "office-fw", "office-sw-core", "1G", sp="Gig0/0/1", tp="XGE1/0/1"),
+    _link("l11", "office-sw-core", "office-sw-acc", "1G", sp="XGE1/0/2", tp="XGE1/0/1"),
+    _link("l12", "office-sw-core", "ap-1", "1G", sp="GE1/0/1", tp="eth0"),
+    _link("l13", "office-sw-acc", "pc-1", "1G", sp="GE1/0/1", tp="eth0"),
+    _link("l14", "office-sw-acc", "pc-2", "1G", status="faulty", sp="GE1/0/2", tp="eth0"),
+    _link("l15", "core-fw", "server-fw", "10G", sp="Gig0/0/3", tp="Gig0/0/0"),
+    _link("l16", "server-fw", "server-sw", "10G", sp="Gig0/0/1", tp="XGE1/0/1"),
+    _link("l17", "server-sw", "app-1", "10G", sp="XGE1/0/2", tp="eth1"),
+    _link("l18", "server-sw", "app-2", "10G", sp="XGE1/0/3", tp="eth1"),
+    _link("l19", "server-sw", "db-1", "10G", sp="XGE1/0/4", tp="eth1"),
+    _link("l20", "server-sw", "file-1", "10G", sp="XGE1/0/5", tp="eth1"),
+    _link("l21", "server-sw", "backup-1", "1G", sp="XGE1/0/6", tp="eth1"),
+    _link("l22", "db-1", "storage-1", "16G", sp="FC1", tp="FC1"),
+    _link("l23", "app-1", "db-1", "10G", sp="eth2", tp="eth2"),
+]
+INITIAL_GROUPS = [
+    {
+        "label": label, "shape": "round", "padding": 20, "alpha": 0.10,
+        "headerAlpha": 0.88, "borderWidth": 1.5, "borderColor": border,
+        "dash": [], "font": "bold 13px Arial", "textAlign": "center",
+        "fontColor": "255,255,255", "fillColor": fill, "headerColor": border,
+        "headerHeight": 30, "textOffsetX": 0,
+        "selectedBorderColor": "47,123,255", "selectedBorderWidth": 2,
+        "memberIds": ZONE_MEMBERS[label],
+    }
+    for label, fill, border in ZONES
+]
+
+# 节点 -> 设备 关联（部分节点纳管；复用现有设备，保留 normal/warn/alert 分布）
 NODE_DEVICE = {
-    "router1": "rtr-core-01", "router2": "rtr-core-02",
-    "fw1": "fw-01", "fw2": "fw-02", "fw3": "fw-03", "fw4": "fw-04",
-    "aggr": "swt-aggr-01", "lan": "swt-lan-01",
-    "app1": "srv-app-01", "app2": "srv-app-02",
-    "room": "idc-hq-01", "gw": "gw-home-01",
+    "edge-router": "rtr-core-01",      # 核心路由器-01 (normal)
+    "core-fw": "fw-01",                # 边界防火墙-01 (normal)
+    "office-fw": "fw-02",              # 边界防火墙-02 (warn)
+    "server-fw": "fw-03",              # 数据区防火墙 (normal)
+    "office-sw-core": "swt-aggr-01",   # 汇聚交换机 (normal)
+    "office-sw-acc": "swt-lan-01",     # 接入交换机 (normal)
+    "app-1": "srv-app-01",             # 应用服务器-01 (normal)
+    "app-2": "srv-app-02",             # 应用服务器-02 (alert)
 }
 
 DEVICES = [
@@ -172,8 +221,8 @@ def seed(force: bool = False) -> None:
             n.setdefault("radius", n.get("size", 60) // 2)
             n.setdefault("fillColor", n.get("color"))
             nodes.append(n)
-        links = [{"id": i, "source": s, "target": t, "label": ""} for i, s, t in INITIAL_LINKS]
-        canvas = {"nodes": nodes, "links": links, "groups": [INITIAL_GROUP]}
+        links = [dict(l) for l in INITIAL_LINKS]
+        canvas = {"nodes": nodes, "links": links, "groups": list(INITIAL_GROUPS)}
 
         if has_topo and not force:
             print("已存在拓扑，跳过拓扑种子（force=True 可重建）")
@@ -187,7 +236,7 @@ def seed(force: bool = False) -> None:
             db.flush()
             for node_id, device_id in NODE_DEVICE.items():
                 db.add(TopologyNodeDevice(topology_id=topo.id, node_id=node_id, device_id=device_id))
-            print(f"拓扑 v1 已创建（{len(nodes)} 节点 / {len(links)} 连线 / 1 分组 / {len(NODE_DEVICE)} 关联）")
+            print(f"拓扑 v1 已创建（{len(nodes)} 节点 / {len(links)} 连线 / {len(INITIAL_GROUPS)} 分区 / {len(NODE_DEVICE)} 关联）")
 
         # ---- 设备 ----
         if has_dev and not force:
