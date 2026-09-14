@@ -14,6 +14,7 @@ import TopNCard from '../components/cards/TopNCard.vue'
 import LocationCard from '../components/cards/LocationCard.vue'
 import OnDutyCard from '../components/cards/OnDutyCard.vue'
 import GraphView from '../components/topology/GraphView.vue'
+import Topo3DEmbed from '../components/topology/Topo3DEmbed.vue'
 import DeviceDrawer from '../components/topology/DeviceDrawer.vue'
 import { wsStatus } from '../composables/useWs'
 
@@ -26,11 +27,16 @@ const now = ref(new Date())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
+// 拓扑渲染模式：2D（GraphView）/ 3D（Topo3DEmbed），只切换中间渲染区
+const topoMode = ref<'2d' | '3d'>('2d')
+
 // 设备抽屉（统一穿透入口）
 const gv = ref<InstanceType<typeof GraphView> | null>(null)
-const drawer = ref({ open: false, deviceId: null as string | null, nodeId: '' })
-function openDevice(deviceId: string | null, nodeId: string) {
-  drawer.value = { open: true, deviceId, nodeId }
+const drawer = ref({ open: false, deviceId: null as string | null, nodeId: '', nodeLabel: '' })
+function openDevice(deviceId: string | null, nodeId: string, label?: string) {
+  // 2D 由 GraphView 已挂载，可用 nodeLabelById 取名；3D 由组件直接传 label
+  const nodeLabel = label ?? (nodeId ? (gv.value?.nodeLabelById(nodeId) || '') : '')
+  drawer.value = { open: true, deviceId, nodeId, nodeLabel }
 }
 function gotoEditor(nodeId: string) {
   drawer.value.open = false
@@ -96,14 +102,19 @@ onUnmounted(() => {
         </ChartCard>
       </div>
 
-      <!-- 中：拓扑（GraphView 只读 + 四态渲染 + 点击穿透） -->
+      <!-- 中：拓扑（2D/3D 可切换，只换中间渲染区） -->
       <div class="center">
         <div class="topo-head">
           <b>网络拓扑</b>
           <span class="dim" v-if="overview.topology">{{ overview.topology.name }} v{{ overview.topology.version }} · 点击节点查看设备</span>
+          <span class="topo-mode">
+            <button :class="{ on: topoMode === '2d' }" @click="topoMode = '2d'">2D</button>
+            <button :class="{ on: topoMode === '3d' }" @click="topoMode = '3d'">3D</button>
+          </span>
         </div>
         <div class="topo-canvas">
-          <GraphView ref="gv" hide-labels @open-device="openDevice" />
+          <GraphView v-if="topoMode === '2d'" ref="gv" hide-labels @open-device="openDevice" />
+          <Topo3DEmbed v-else hide-labels @open-device="(id, nid, lb) => openDevice(id, nid, lb)" />
         </div>
       </div>
 
@@ -129,7 +140,7 @@ onUnmounted(() => {
     <DeviceDrawer
       :device-id="drawer.deviceId"
       :node-id="drawer.nodeId"
-      :node-label="drawer.nodeId ? (gv?.nodeLabelById(drawer.nodeId) || '') : ''"
+      :node-label="drawer.nodeLabel"
       :open="drawer.open"
       @close="drawer.open = false"
       @goto-editor="gotoEditor"
@@ -149,4 +160,12 @@ onUnmounted(() => {
   background: radial-gradient(1400px 700px at 70% -10%, #14264a 0%, var(--bg) 55%);
 }
 .loading { padding: 40px; color: var(--text-dim); }
+/* 拓扑 2D/3D 模式切换（在 .topo-head 内） */
+.topo-mode { display: inline-flex; gap: 2px; margin-left: 6px; padding: 2px; border: 1px solid var(--border); border-radius: 6px; }
+.topo-mode button {
+  border: none; background: none; cursor: pointer; padding: 2px 10px;
+  border-radius: 5px; font-size: 12px; color: var(--text-dim); line-height: 1.4;
+}
+.topo-mode button:hover { color: var(--text); }
+.topo-mode button.on { background: var(--accent); color: #fff; }
 </style>

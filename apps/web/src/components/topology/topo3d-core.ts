@@ -139,9 +139,12 @@ export class Topo3DCore {
 
   onNodeClick: ((id: string) => void) | null = null
   onNodeHover: ((id: string | null) => void) | null = null
+  // 大屏模式：节点名称 sprite 默认隐藏（hover 浮层展示名称）
+  private hideLabels = false
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, opts?: { hideLabels?: boolean }) {
     this.container = container
+    this.hideLabels = !!opts?.hideLabels
     const w = container.clientWidth || 800
     const h = container.clientHeight || 500
 
@@ -401,7 +404,7 @@ export class Topo3DCore {
       rec.disc.visible = vis
       rec.ring.visible = vis
       rec.stem.visible = vis
-      rec.label.visible = vis
+      rec.label.visible = vis && !this.hideLabels
     }
     for (const rec of this.links) {
       const a = this.nodes.get(rec.source)
