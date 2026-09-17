@@ -200,6 +200,9 @@ class AlertOut(ORMModel):
     level: str
     title: str
     detail: str | None = None
+    # 事件来源：device=设备告警 | security=安防事件
+    source: str = "device"
+    category: str | None = None
     created_at: datetime
     acked: bool
 
@@ -315,3 +318,41 @@ class OverviewOut(BaseModel):
     unacked_alerts: int
     biz_systems: list[BizSystemOut]
     topology: dict | None = None        # {id, name, version}
+
+
+# ===== device pool（终端资产池：手机/PC 等）=====
+class DevicePoolOut(BaseModel):
+    id: int
+    category: str
+    total: int
+    used: int
+    free: int                            # 余量 = total - used
+    updated_at: datetime
+
+
+# ===== room monitor（机房环境/动环）=====
+class RoomMetricReportItem(BaseModel):
+    """真实源（EMQ/动环网关/Zabbix）推送项：room 按机房名匹配。"""
+    room: str = Field(min_length=1, max_length=64)
+    metric: str = Field(min_length=1, max_length=32)
+    value: float
+    source: str | None = None           # 缺省 "external"
+    ts: datetime | None = None          # 缺省服务端当前时间
+
+
+class RoomMetricReportReq(BaseModel):
+    items: list[RoomMetricReportItem] = Field(min_length=1, max_length=500)
+
+
+class RoomMetricReportResp(BaseModel):
+    accepted: int
+    skipped: int                        # 机房名不匹配跳过的条数
+
+
+class RoomMetricLatestOut(BaseModel):
+    room_id: int
+    room_name: str
+    metric: str
+    value: float
+    source: str
+    ts: datetime

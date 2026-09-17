@@ -5,6 +5,8 @@
  "statuses":  [{"id","name","status"}, ...],           # 设备状态变更
  "alerts":    [AlertOut 全字段, ...],                   # 本轮新告警（含 device_name）
  "top":       {"metric":"cpu", "items":[{device_id,name,value}, ...]} | null}
+ "pools":     [{"id","category","total","used","free"}, ...],   # 资产池使用量变更
+ "room_metrics": [{"room_id","room_name","metric","value","ts"}, ...],
 空轮（无任何新增）不广播。
 """
 import logging
@@ -15,7 +17,7 @@ from sqlalchemy import delete, func, select
 from .collectors import get_collector
 from .config import get_settings
 from .db import SessionLocal
-from .models import Alert, Device, DeviceMetric
+from .models import Alert, Device, DeviceMetric, DevicePool, Room, RoomMetric
 from .ws import hub
 
 log = logging.getLogger("it-ops.jobs")
@@ -96,7 +98,11 @@ async def run_collection() -> None:
                 log.exception("prune 失败（忽略，下轮重试）")
                 db.rollback()
         if _collector is None:
-            _collector = get_collector(dev_ids)
+            pool_ids = [i for i in db.execute(select(DevicePool.id)).scalars()]
+            rooms = db.execute(select(Room.id, Room.name)).all()
+            _collector = get_collector(
+                dev_ids, pool_ids=pool_ids, room_ids=[r.id for r in rooms],
+                room_names={r.id: r.name for r in rooms})
         batch = _collector.collect()
         if not any(batch.values()):
             return
@@ -112,11 +118,24 @@ async def run_collection() -> None:
                                 value=m["value"]))
         for a in batch["alerts"]:
             db.add(Alert(device_id=a.get("device_id"), level=a["level"],
-                         title=a["title"], detail=a.get("detail")))
+                         title=a["title"], detail=a.get("detail"),
+                         source=a.get("source", "device"),
+                         category=a.get("category")))
         for st in batch["statuses"]:
             d = db.get(Device, st["device_id"])
             if d:
                 d.status = st["status"]
+        # 资产池使用量漂移（借还），used 夹在 [0, total]
+        for pu in batch.get("pool_updates") or []:
+            p = db.get(DevicePool, pu["pool_id"])
+            if p is not None:
+                p.used = max(0, min(p.total, p.used + pu["delta"]))
+                p.updated_at = datetime.now(timezone.utc)
+        # 机房动环（mock 每轮全量三项）
+        for rm in batch.get("room_metrics") or []:
+            db.add(RoomMetric(room_id=rm["room_id"], metric=rm["metric"],
+                              value=rm["value"], source=rm.get("source", "mock"),
+                              ts=datetime.fromtimestamp(rm["ts"], tz=timezone.utc)))
         db.commit()
 
         payload: dict = {"type": "feed_update"}
@@ -134,15 +153,34 @@ async def run_collection() -> None:
                 {"id": a.id, "device_id": a.device_id,
                  "device_name": names.get(a.device_id) if a.device_id else None,
                  "level": a.level, "title": a.title, "detail": a.detail,
+                 "source": a.source, "category": a.category,
                  "created_at": a.created_at, "acked": a.acked}
                 for a in new_rows
             ]
-            # 严重告警触发 webhook 推送（后台 task，配置关闭静默跳过）
+            # 严重告警/安防事件触发 webhook 推送（后台 task，配置关闭静默跳过）
             from . import notify as _notify
-            _notify.fire_alert_notify([p for p in payload["alerts"] if p["level"] == "crit"])
+            _notify.fire_alert_notify([p for p in payload["alerts"]
+                                       if p["level"] == "crit" or p["source"] == "security"])
 
         if batch["metrics"]:
             payload["top"] = {"metric": "cpu", "items": _top_cpu(db)}
+
+        if batch.get("pool_updates"):
+            rows = db.execute(select(DevicePool).where(DevicePool.id.in_(
+                [pu["pool_id"] for pu in batch["pool_updates"]]))).scalars()
+            payload["pools"] = [
+                {"id": p.id, "category": p.category, "total": p.total,
+                 "used": p.used, "free": p.total - p.used} for p in rows
+            ]
+
+        if batch.get("room_metrics"):
+            room_names = {rid: name for rid, name in db.execute(select(Room.id, Room.name))}
+            payload["room_metrics"] = [
+                {"room_id": rm["room_id"], "room_name": room_names.get(rm["room_id"]),
+                 "metric": rm["metric"], "value": rm["value"],
+                 "ts": datetime.fromtimestamp(rm["ts"], tz=timezone.utc)}
+                for rm in batch["room_metrics"]
+            ]
 
         await hub.broadcast(payload)
     finally:

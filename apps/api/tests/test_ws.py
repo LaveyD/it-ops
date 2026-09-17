@@ -23,6 +23,8 @@ def _stub_collector(device_id: str):
                 "alerts": [{"device_id": device_id, "level": "warn",
                             "title": "测试告警", "detail": "pytest"}],
                 "statuses": [{"device_id": device_id, "status": "warn"}],
+                "pool_updates": [],
+                "room_metrics": [],
             }
 
     return Stub()

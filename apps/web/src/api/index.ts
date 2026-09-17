@@ -68,6 +68,9 @@ export const api = {
     request<import('../types').DeviceTopItem[]>(`/api/overview/top?metric=${metric}&n=${n}&window_hours=${windowHours}`),
   bizSystems: () => request<import('../types').BizSystem[]>('/api/biz-systems'),
   topologyActive: () => request<import('../types').TopologyActive>('/api/topology/active'),
+  // ===== M11 大屏：终端资产池 / 机房动环 =====
+  devicePools: () => request<import('../types').DevicePool[]>('/api/device-pools'),
+  roomMetricsLatest: () => request<import('../types').RoomMetricLatest[]>('/api/room-monitor/latest'),
   // ===== M6 后台管理 =====
   users: () => request<import('../types').UserAccount[]>('/api/users'),
   createUser: (body: { username: string; password: string; display_name?: string; role: string }) =>

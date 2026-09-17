@@ -6,6 +6,9 @@ import { useAuthStore } from '../store/auth'
 import type { Device, Overview } from '../types'
 import ChartCard from '../components/ChartCard.vue'
 import DevicePieCard from '../components/cards/DevicePieCard.vue'
+import DevicePoolCard from '../components/cards/DevicePoolCard.vue'
+import SecurityEventCard from '../components/cards/SecurityEventCard.vue'
+import RoomMonitorCard from '../components/cards/RoomMonitorCard.vue'
 import PerfTrendCard from '../components/cards/PerfTrendCard.vue'
 import BizListCard from '../components/cards/BizListCard.vue'
 import AlertBarsCard from '../components/cards/AlertBarsCard.vue'
@@ -91,6 +94,9 @@ onUnmounted(() => {
         <ChartCard title="设备状态分布" :time="`${overview.device_count} 台`">
           <DevicePieCard :devices="devices" />
         </ChartCard>
+        <ChartCard title="终端设备资产池" extra="手机/PC/笔记本">
+          <DevicePoolCard />
+        </ChartCard>
         <ChartCard title="性能趋势" extra="近 6 小时">
           <PerfTrendCard :devices="devices" />
         </ChartCard>
@@ -122,6 +128,12 @@ onUnmounted(() => {
       <div class="col">
         <ChartCard title="实时告警" extra="4s 滚动">
           <AlertFeedCard @open-device="(id) => openDevice(id, '')" />
+        </ChartCard>
+        <ChartCard title="安防异常事件" extra="实时">
+          <SecurityEventCard />
+        </ChartCard>
+        <ChartCard title="机房环境监测" extra="实时">
+          <RoomMonitorCard />
         </ChartCard>
         <ChartCard title="CPU TOP 10" extra="近 24h">
           <TopNCard @open-device="(id) => openDevice(id, '')" />

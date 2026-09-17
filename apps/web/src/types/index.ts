@@ -45,6 +45,8 @@ export interface Alert {
   level: 'info' | 'warn' | 'crit'
   title: string
   detail: string | null
+  source?: 'device' | 'security'
+  category?: string | null
   created_at: string
   acked: boolean
 }
@@ -239,4 +241,23 @@ export interface BizSystemInput {
   status?: 'normal' | 'warn' | 'alert'
   sla_target?: number | null
   sla_actual?: number | null
+}
+
+// ===== M11 大屏：终端资产池 / 机房动环 =====
+export interface DevicePool {
+  id: number
+  category: string
+  total: number
+  used: number
+  free: number
+  updated_at: string
+}
+
+export interface RoomMetricLatest {
+  room_id: number
+  room_name: string
+  metric: string  // temperature | humidity | ups_load
+  value: number
+  source: string
+  ts: string
 }

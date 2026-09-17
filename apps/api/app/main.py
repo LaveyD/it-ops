@@ -7,7 +7,7 @@ from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import alerts, audit, auth, biz_systems, devices, locations, notify, overview, rooms, topology, users
+from .routers import alerts, audit, auth, biz_systems, devices, device_pools, locations, notify, overview, room_monitor, rooms, topology, users
 from .ws import hub
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +34,8 @@ app.include_router(alerts.router)
 app.include_router(biz_systems.router)
 app.include_router(overview.router)
 app.include_router(notify.router)
+app.include_router(device_pools.router)
+app.include_router(room_monitor.router)
 
 
 @app.get("/api/health")

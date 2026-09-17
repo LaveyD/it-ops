@@ -46,6 +46,7 @@ def list_alerts(
     level: str | None = None,
     unacked: bool | None = None,
     device_id: str | None = None,
+    source: str | None = Query(None, description="事件来源：device | security"),
     limit: int = Query(50, le=500),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -58,6 +59,8 @@ def list_alerts(
         stmt = stmt.where(Alert.acked == (not unacked))
     if device_id:
         stmt = stmt.where(Alert.device_id == device_id)
+    if source:
+        stmt = stmt.where(Alert.source == source)
     rows = db.execute(stmt.order_by(Alert.created_at.desc()).limit(limit)).scalars().all()
     names = {d.id: d.name for d in db.execute(select(Device)).scalars()}
     out = []

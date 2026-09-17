@@ -74,8 +74,42 @@ class Alert(Base):
     level: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
     detail: Mapped[str | None] = mapped_column(Text)
+    # 事件来源：device=设备告警（默认）| security=安防事件（未关门/闯入/尾随，device_id 可为空）
+    source: Mapped[str] = mapped_column(Text, default="device")
+    # 事件类别（安防：door 门 / badge 刷卡 / intrude 闯入；设备告警可空）
+    category: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     acked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DevicePool(Base):
+    """终端设备资产池（手机/PC/笔记本等），与 IT 设备表（device）分开建模。
+    余量 = total - used，不落库。mock 采集器每轮小幅漂移 used。"""
+
+    __tablename__ = "device_pool"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category: Mapped[str] = mapped_column(Text, unique=True)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    used: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class RoomMetric(Base):
+    """机房环境/动环指标（温度/湿度/UPS 负载）。
+
+    接入契约：POST /api/room-monitor/report 是真实源（EMQ/动环网关/Zabbix）的
+    写入入口，查询端与前端不感知数据来源；当前由 mock 采集器产出。
+    source 字段标记来源（mock / 真实源名称），便于真源接入后区分。"""
+
+    __tablename__ = "room_metric"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    room_id: Mapped[int] = mapped_column(ForeignKey("room.id", ondelete="CASCADE"), index=True)
+    metric: Mapped[str] = mapped_column(Text, index=True)  # temperature | humidity | ups_load
+    value: Mapped[float] = mapped_column(Double)
+    source: Mapped[str] = mapped_column(Text, default="mock")
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class BizSystem(Base):

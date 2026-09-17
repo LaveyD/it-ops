@@ -9,8 +9,8 @@ from sqlalchemy import func, select
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import (Alert, BizSystem, Cabinet, Device, DeviceMetric, Location, Room,
-                     Topology, TopologyNodeDevice, User)
+from .models import (Alert, BizSystem, Cabinet, Device, DeviceMetric, DevicePool, Location, Room,
+                     RoomMetric, Topology, TopologyNodeDevice, User)
 from .security import hash_password
 
 # ===== 初始拓扑 v2（5 分区 / 23 节点 / 23 连线，结构参考 TDDC 网络拓扑数据）=====
@@ -141,6 +141,24 @@ BIZ_SYSTEMS = [
     ("财务系统", "财务部", "warn", 99.95, 99.80),
     ("数据平台", "数据部", "normal", 99.9, 99.97),
     ("统一认证", "安全部", "normal", 99.99, 99.99),
+]
+
+# 终端设备资产池（category, total, used）：手机/PC/笔记本等，余量 = total - used
+POOLS = [
+    ("手机", 120, 96),
+    ("PC 终端", 80, 62),
+    ("笔记本", 40, 25),
+    ("打印机", 18, 11),
+    ("工牌", 200, 143),
+]
+
+# 安防事件样例（level, category, title, detail），近 24h 历史让大屏安防卡有初始内容
+SECURITY_SAMPLES = [
+    ("warn", "door", "机房门未关闭", "总部数据中心 A 区门未关闭已持续 12 分钟"),
+    ("crit", "intrude", "未授权闯入", "总部数据中心 检测到未授权人员闯入"),
+    ("info", "badge", "尾随进入", "总部数据中心 入口检测到尾随（未单独刷卡）"),
+    ("warn", "door", "门被长时间开启", "总部数据中心 A 区门开启超过 5 分钟"),
+    ("info", "badge", "未刷卡离开", "总部数据中心 A 区 1 人未刷卡离开"),
 ]
 
 # 示例位置注册表（M6，三维机房 M7 会扩展）
@@ -308,6 +326,43 @@ def seed(force: bool = False) -> None:
                 db.add(BizSystem(name=name, owner=owner, status=status,
                                  sla_target=sla_t, sla_actual=sla_a))
             print(f"业务系统新增 {len(missing)} 个（已存在 {len(existing)} 个跳过）")
+
+        # ---- 终端设备资产池（幂等 upsert：category 唯一，已存在则刷新 total/used）----
+        pool_rows = db.execute(select(DevicePool)).scalars().all()
+        existing_pools = {p.category: p for p in pool_rows}
+        for cat, total, used in POOLS:
+            p = existing_pools.get(cat)
+            if p is None:
+                db.add(DevicePool(category=cat, total=total, used=used))
+            else:
+                p.total, p.used = total, used
+        db.flush()
+        print(f"终端资产池已就绪（{len(POOLS)} 类）")
+
+        # ---- 安防事件历史（近 24h，幂等：已有 security 告警则跳过）----
+        has_sec = db.scalar(select(Alert.id).where(Alert.source == "security")) is not None
+        if not has_sec:
+            now2 = time.time()
+            for i, (lv, cat, title, detail) in enumerate(SECURITY_SAMPLES):
+                db.add(Alert(device_id=None, level=lv, title=title, detail=detail,
+                             source="security", category=cat,
+                             created_at=_ts(now2 - (i + 1) * 3600),
+                             acked=i > 2))
+            print(f"安防事件样例 {len(SECURITY_SAMPLES)} 条已创建")
+
+        # ---- 机房动环历史（近 2h，每 5min 一条，幂等：已有 room_metric 则跳过）----
+        if room is not None and db.scalar(select(RoomMetric.id)) is None:
+            now3 = time.time()
+            room_profiles = {"temperature": 24.0, "humidity": 50.0, "ups_load": 45.0}
+            for m, base in room_profiles.items():
+                v = base + random.uniform(-2, 2)
+                for i in range(int(2 * 3600 / 300)):
+                    ts = now3 - (i + 1) * 300
+                    v += random.uniform(-0.4, 0.4)
+                    v += (base - v) * 0.05
+                    db.add(RoomMetric(room_id=room.id, metric=m, value=round(v, 2),
+                                      source="mock", ts=_ts(ts)))
+            print("机房动环 2h × 5min 已生成")
 
         db.commit()
         print("seed 完成。")
