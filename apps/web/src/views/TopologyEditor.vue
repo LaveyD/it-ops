@@ -4,7 +4,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { TopoEngine, DEVICES, DEVICE_MAP, hexToRgb, toHex, applyGroupStyle, fitToView } from '../components/topology/topo-core'
 import { api } from '../api'
-import type { Device, TopologyActive, TopologyVersion } from '../types'
+import type { Device, TopologyActive } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,13 +12,12 @@ const router = useRouter()
 // embedded: 嵌进后台管理页（/admin/network/topology），隐藏自身顶栏、跟随容器高度
 const props = defineProps<{ embedded?: boolean }>()
 // M8：版本操作（保存新版本/激活）后通知管理页壳刷新版本面板
-const emit = defineEmits<{ (e: 'saved'): void; (e: 'activated'): void }>()
+const emit = defineEmits<{ (e: 'saved'): void }>()
 
 const box = ref<HTMLElement>()
 let engine: TopoEngine | null = null
 
 const activeTopo = ref<TopologyActive | null>(null)
-const versions = ref<TopologyVersion[]>([])
 const devices = ref<Device[]>([])
 const devicesLoading = ref(false)
 
@@ -65,9 +64,7 @@ function updateStat() {
 
 async function loadAll() {
   try {
-    const [a, vs] = await Promise.all([api.topologyActive(), api.topologyVersions()])
-    activeTopo.value = a
-    versions.value = vs
+    activeTopo.value = await api.topologyActive()
     await loadDevices()
   } catch (e) { console.error(e) }
 }
@@ -226,20 +223,18 @@ function saveGroup() {
   dirty.value = true
 }
 
-// 保存 / 版本
-async function saveTopology(asNew = false) {
+// 保存（覆盖唯一拓扑，无版本概念）
+async function saveTopology() {
   const canvas = engine?.serialize()
   if (!canvas) return
   saving.value = true
-  setStatus(asNew ? '另存为新版本…' : '保存中…')
+  setStatus('保存中…')
   try {
     const name = activeTopo.value?.name || '默认拓扑'
-    // 保存 = 覆盖当前生效版本（asNew=false）；另存为 = 新建版本
-    const v = await api.saveTopology(name, canvas, asNew ? null : (activeTopo.value?.id ?? null))
-    if (asNew) setStatus(`已另存为新版本 v${v.version}${v.is_active ? '（已激活）' : ''}`)
-    else setStatus(`已保存当前版本 v${v.version}${v.is_active ? '（生效）' : ''}`)
+    const v = await api.saveTopology(name, canvas, activeTopo.value?.id ?? null)
+    setStatus(`已保存（${v.name}）`)
     dirty.value = false
-    if (activeTopo.value) { activeTopo.value.id = v.id; activeTopo.value.version = v.version }
+    if (activeTopo.value) { activeTopo.value.id = v.id }
     await loadAll()
     emit('saved')
   } catch (e) {
@@ -252,16 +247,6 @@ async function saveTopology(asNew = false) {
     else setStatus('保存失败：' + msg, true)
   }
   saving.value = false
-}
-async function activateVersion(id: number) {
-  try {
-    await api.activateTopology(id)
-    setStatus('已激活该版本')
-    await loadAll()
-    engine?.renderCanvas(activeTopo.value.canvas)
-    setStatus(`已切换到 v${activeTopo.value.version}（${activeTopo.value.name}）`)
-    emit('activated')
-  } catch (e) { setStatus('激活失败：' + e, true) }
 }
 
 function gotoDevice(id: string) {
@@ -372,8 +357,7 @@ defineExpose({
           <span class="sep"></span>
           <button :title="nodeStyle === 'flat' ? '切换为立体节点（等距立方体）' : '切换为扁平节点（圆）'" @click="onTool('style')">{{ nodeStyle === 'flat' ? '◻' : '⬢' }}</button>
           <span class="sep"></span>
-          <button class="primary" title="保存当前版本（覆盖，不产生新版本号）" :disabled="saving" @click="saveTopology(false)">💾 保存</button>
-          <button class="text-btn" title="另存为新版本（版本号 +1）" :disabled="saving" @click="saveTopology(true)">⎘ 另存为</button>
+          <button class="primary" title="保存拓扑（覆盖当前）" :disabled="saving" @click="saveTopology()">💾 保存</button>
           <span class="zoom-label">{{ zoom }}</span>
           <span class="stat">{{ stat }}</span>
         </div>
@@ -386,16 +370,6 @@ defineExpose({
           <span class="tab-r" :class="{ active: tab === 'global' }" @click="tab = 'global'">全局</span>
           <span class="tab-r" :class="{ active: tab === 'node' }" @click="tab = 'node'">节点</span>
           <span class="tab-r" :class="{ active: tab === 'link' }" @click="tab = 'link'">连线</span>
-        </div>
-
-        <!-- 版本管理：独立路由时用编辑器内下拉；嵌入管理页时由 TopologyView 左面板接管 -->
-        <div v-if="!embedded" class="sec ver">
-          <label>版本（点击切换/激活）</label>
-          <select :value="activeTopo?.id" @change="activateVersion(Number($event.target.value))">
-            <option v-for="v in versions" :key="v.id" :value="v.id">
-              v{{ v.version }} · {{ v.name }}{{ v.is_active ? '（生效）' : '' }}
-            </option>
-          </select>
         </div>
 
         <!-- 全局设置 -->

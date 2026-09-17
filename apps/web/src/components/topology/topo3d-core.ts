@@ -20,6 +20,9 @@ const LIFT: Record<string, number> = { normal: 0, warn: 2.6, alert: 5.2, unmanag
 const PX = 0.26                       // 数据 px → 世界单位（节点坐标 x:0~1000, y:0~850）
 const DISC_Y = 0.9                    // 圆盘基准高度（贴地之上）
 const RANK: Record<string, number> = { unmanaged: 0, normal: 1, warn: 2, alert: 3 }
+// 流光短圆柱复用向量（避免每帧 new）
+const _UP = new THREE.Vector3(0, 1, 0)
+const _flowDir = new THREE.Vector3()
 
 function hexFromCss(str: string | undefined): number {
   if (!str) return 0x3a6ea5
@@ -104,6 +107,8 @@ interface NodeRec {
 interface LinkRec {
   line: THREE.Line
   arrow: THREE.Mesh
+  bar: THREE.Mesh      // 流光：一小段发光短圆柱，沿 a→b 滑过
+  barPhase: number
   speed: THREE.Sprite | null
   source: string
   target: string
@@ -255,7 +260,7 @@ export class Topo3DCore {
     const typeColor = hexFromCss(n.color || n.fillColor)
 
     const disc = new THREE.Mesh(
-      new THREE.CylinderGeometry(r, r, 0.7, 40),
+      new THREE.CylinderGeometry(r, r, 1.4, 40),
       new THREE.MeshStandardMaterial({ color: typeColor, emissive: typeColor, emissiveIntensity: 0.3, roughness: 0.4 }),
     )
     disc.position.set(wx, y, wz)
@@ -315,6 +320,21 @@ export class Topo3DCore {
     )
     this.scene.add(arrow)
 
+    // 流光：一小段发光短圆柱，沿 a→b 滑过（彗星式，比原线略粗；faulty 线不画）。
+    // 几何为单位长度(1)圆柱，长度/朝向/位置在 tick 里按线段实时计算。
+    const bar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.6, 0.6, 1, 10),
+      new THREE.MeshBasicMaterial({
+        color: faulty ? 0xff4d4f : new THREE.Color(STATUS_3D_COLOR[this.worseStatus(a.status, b.status)]).lerp(new THREE.Color(0xffffff), 0.55),
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    )
+    bar.visible = !faulty
+    this.scene.add(bar)
+
     // 速率标签（连线中点上方）
     let speed: THREE.Sprite | null = null
     if (speedText) {
@@ -322,7 +342,7 @@ export class Topo3DCore {
       this.scene.add(speed)
     }
 
-    const rec: LinkRec = { line, arrow, speed, source: l.source, target: l.target, faulty }
+    const rec: LinkRec = { line, arrow, bar, barPhase: Math.random(), speed, source: l.source, target: l.target, faulty }
     this.positionLink(rec)
     this.links.push(rec)
     this.linkById.set(l.id, rec)
@@ -363,6 +383,7 @@ export class Topo3DCore {
       ;(rec.line.material as THREE.LineBasicMaterial).color.set(c)
       ;(rec.line.material as THREE.LineBasicMaterial).opacity = rec.faulty ? 0.85 : 0.55
       ;(rec.arrow.material as THREE.MeshBasicMaterial).color.set(c)
+      if (!rec.faulty) (rec.bar.material as THREE.MeshBasicMaterial).color.set(new THREE.Color(c).lerp(new THREE.Color(0xffffff), 0.55))
     }
   }
 
@@ -412,6 +433,7 @@ export class Topo3DCore {
       const vis = !!(a && b && a.disc.visible && b.disc.visible)
       rec.line.visible = vis
       rec.arrow.visible = vis
+      rec.bar.visible = vis && !rec.faulty
       if (rec.speed) rec.speed.visible = vis
     }
   }
@@ -512,6 +534,28 @@ export class Topo3DCore {
       rec.disc.scale.set(s, 1, s)
       ;(rec.stem.material as THREE.MeshBasicMaterial).opacity = 0.35 + (Math.sin(this.elapsed * 4.5) + 1) * 0.15
     }
+    // 连线流光：一小段发光短圆柱沿 a→b 滑过（彗星式，相位错开）
+    for (const rec of this.links) {
+      if (!rec.bar.visible) continue
+      const a = this.nodes.get(rec.source)
+      const b = this.nodes.get(rec.target)
+      if (!a || !b) continue
+      const ax = a.x, az = a.y, ay = DISC_Y + a.targetLift
+      const bx = b.x, bz = b.y, by = DISC_Y + b.targetLift
+      const dx = bx - ax, dy = by - ay, dz = bz - az
+      const len = Math.hypot(dx, dy, dz)
+      if (!len) continue
+      const frac = 0.3
+      const h = (this.elapsed * 0.18 + rec.barPhase) % 1
+      const t0 = Math.max(0, h - frac)
+      // 短圆柱中心 + 朝向 + 长度（单位圆柱沿 Y，长 1，scale.y=段长）
+      const cx = ax + dx * (h + t0) / 2
+      const cy = ay + dy * (h + t0) / 2 + 0.3
+      const cz = az + dz * (h + t0) / 2
+      rec.bar.position.set(cx, cy, cz)
+      rec.bar.quaternion.setFromUnitVectors(_UP, _flowDir.set(dx / len, dy / len, dz / len))
+      rec.bar.scale.set(1, len * (h - t0), 1)
+    }
     // 镜头飞行
     if (this.focusAnim) {
       const t = Math.min(1, (performance.now() - this.focusAnim.t0) / 650)
@@ -542,9 +586,10 @@ export class Topo3DCore {
       rec.label.material.map?.dispose(); rec.label.material.dispose()
     }
     for (const rec of this.links) {
-      this.scene.remove(rec.line, rec.arrow)
+      this.scene.remove(rec.line, rec.arrow, rec.bar)
       rec.line.geometry.dispose(); (rec.line.material as THREE.Material).dispose()
       rec.arrow.geometry.dispose(); (rec.arrow.material as THREE.Material).dispose()
+      rec.bar.geometry.dispose(); (rec.bar.material as THREE.Material).dispose()
       if (rec.speed) {
         this.scene.remove(rec.speed)
         rec.speed.material.map?.dispose(); rec.speed.material.dispose()

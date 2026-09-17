@@ -178,6 +178,41 @@ const FLAT_GLYPH = {
   aggr: 'switch', core: 'switch', db: 'db', pool: 'pool', plat: 'mgmt',
   biz: 'biz', optic: 'biz', '1u': 'server', '2u': 'server',
 }
+// 把 'rgba(r,g,b,a)' 换成指定 alpha（流光渐隐尾用）
+function withAlpha(c, a) {
+  const m = /rgba?\(([^)]+)\)/.exec(c || '')
+  if (m) { const p = m[1].split(','); return `rgba(${p[0]},${p[1]},${p[2]},${a})` }
+  return c
+}
+// 连线流光：一段比原线略粗、带渐隐尾的柔光柱，沿 s→e 滑过（ comet 彗星式）。
+// 独立函数 + 显式坐标，避免内联短变量被 rollup 混淆后坐标 NaN（静默不画）。
+function drawFlowBar(ctx, s, e, color, offset) {
+  const sx = s.x, sy = s.y, ex = e.x, ey = e.y
+  const ddx = ex - sx, ddy = ey - sy
+  if (!isFinite(ddx) || !isFinite(ddy) || (!ddx && !ddy)) return
+  const len = Math.hypot(ddx, ddy)
+  if (!len) return
+  const frac = 0.3 // 光柱覆盖整条线 30% 长度
+  const head = (performance.now() / 2200 + (offset || 0)) % 1
+  const hx = sx + ddx * head, hy = sy + ddy * head
+  const tx = sx + ddx * Math.max(0, head - frac), ty = sy + ddy * Math.max(0, head - frac)
+  if (!isFinite(hx) || !isFinite(hy) || !isFinite(tx) || !isFinite(ty)) return
+  const grad = ctx.createLinearGradient(hx, hy, tx, ty)
+  grad.addColorStop(0, color)
+  grad.addColorStop(0.6, withAlpha(color, 0.35))
+  grad.addColorStop(1, withAlpha(color, 0))
+  ctx.save()
+  ctx.strokeStyle = grad
+  ctx.lineWidth = 4.5 // 比原线略粗
+  ctx.lineCap = 'round'
+  ctx.shadowColor = color
+  ctx.shadowBlur = 6
+  ctx.beginPath()
+  ctx.moveTo(hx, hy)
+  ctx.lineTo(tx, ty)
+  ctx.stroke()
+  ctx.restore()
+}
 // 连线箭头 + 速率标签：引擎原生 showArrow/text 实测不渲染，改 paint 覆盖自绘。
 // 端点取 getStartPosition/getEndPosition（数据坐标），箭头指向 target。
 function linkArrowPaint(orig) {
@@ -186,7 +221,7 @@ function linkArrowPaint(orig) {
     try {
       const hasArrow = !!this._arrowColor
       const label = this._arrowLabel
-      if (!hasArrow && !label) return
+      if (!hasArrow && !label && !this._flowColor) return
       const s = this.getStartPosition()
       const e = this.getEndPosition()
       if (!s || !e) return
@@ -205,6 +240,10 @@ function linkArrowPaint(orig) {
         ctx.closePath()
         ctx.fill()
         ctx.restore()
+      }
+      // 流光：柔光柱沿源→目标滑过（faulty 红线为静态虚线，不画流光）
+      if (this._flowColor) {
+        drawFlowBar(ctx, s, e, this._flowColor, this._flowOffset)
       }
       if (label) {
         const mx = (s.x + e.x) / 2, my = (s.y + e.y) / 2
@@ -657,14 +696,16 @@ export class TopoEngine {
     } catch (e) { /* ignore */ }
   }
 
-  // 呼吸灯动画：alert 节点存在时保持 rAF 循环重绘
+  // 呼吸灯动画：alert 节点存在时保持 rAF 循环重绘；flat 模式连线流光需持续重绘（限频 30fps）
   _startAnim() {
     if (this._raf) return
     const tick = () => {
       const g = this.graph
       if (!g) { this._raf = null; return }
-      const need = (g.nodes || []).some((n) => nodeState(n, this._devices) === 'alert')
-      if (need && g.refresh) g.refresh()
+      const needAlert = (g.nodes || []).some((n) => nodeState(n, this._devices) === 'alert')
+      const needFlow = this.opts.nodeStyle === 'flat' && !!(g.links || []).some((l) => l._flowColor)
+      if (needAlert && g.refresh) g.refresh()
+      else if (needFlow && g.refresh && Date.now() - (this._lastFlow || 0) > 33) { g.refresh(); this._lastFlow = Date.now() }
       this._raf = requestAnimationFrame(tick)
     }
     this._raf = requestAnimationFrame(tick)
@@ -733,12 +774,15 @@ export class TopoEngine {
       } else if (flat) {
         l.strokeColor = dark ? 'rgba(110,140,190,0.8)' : 'rgba(100,125,160,0.85)'
       }
-      // 箭头 + 速率标签（仅 flat 模式开启）
+      // 箭头 + 速率标签 + 流光（仅 flat 模式开启）
       if (flat) {
         l._arrowColor = faulty ? 'rgba(255,90,90,1)' : (dark ? 'rgba(140,170,215,0.95)' : 'rgba(80,105,140,0.95)')
         l._arrowLabel = lp.speed || ''
         l._arrowLabelBg = dark ? 'rgba(13,26,48,0.82)' : 'rgba(255,255,255,0.85)'
         l._arrowLabelColor = faulty ? 'rgba(255,120,120,1)' : (dark ? 'rgba(180,205,235,0.95)' : 'rgba(70,90,120,0.95)')
+        // 流光：正常线画流动光点（相位错开）；faulty 红线静态虚线，不画
+        l._flowColor = faulty ? null : (dark ? 'rgba(120,210,255,0.9)' : 'rgba(70,150,235,0.9)')
+        if (l._flowColor) l._flowOffset = (l._flowOffset ?? Math.random())
         if (!l._arrowPaint) l._arrowPaint = true
         const orig = l.paint
         // 只包一层，避免 renderCanvas 重绘后重复包裹
@@ -750,6 +794,7 @@ export class TopoEngine {
         // cube 模式：清除 flat 标记
         l._arrowColor = null
         l._arrowLabel = ''
+        l._flowColor = null
       }
     })
   }
