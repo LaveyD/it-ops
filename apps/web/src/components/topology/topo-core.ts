@@ -703,7 +703,8 @@ export class TopoEngine {
       const g = this.graph
       if (!g) { this._raf = null; return }
       const needAlert = (g.nodes || []).some((n) => nodeState(n, this._devices) === 'alert')
-      const needFlow = this.opts.nodeStyle === 'flat' && !!(g.links || []).some((l) => l._flowColor)
+      // 连线流光：样式无关（flat/cube 都有），只要有正常线就持续重绘（限频 30fps）
+      const needFlow = !!(g.links || []).some((l) => l._flowColor)
       if (needAlert && g.refresh) g.refresh()
       else if (needFlow && g.refresh && Date.now() - (this._lastFlow || 0) > 33) { g.refresh(); this._lastFlow = Date.now() }
       this._raf = requestAnimationFrame(tick)
@@ -736,12 +737,36 @@ export class TopoEngine {
     this._hookSelection()
   }
 
-  // 运行时切换节点样式（flat/cube）：存样式后用最近一次 canvas 整图重绘
+  // 保存/恢复视图变换（scaleX/scaleY/translateX/translateY）。
+  // 整图重绘（clearAll+drawData）会把引擎缩放重置为 1（平移保留），
+  // 切换节点样式这类"不应改变视图"的重绘需在重绘后恢复，否则用户看到缩放跳变。
+  _saveView() {
+    const sc = this.graph && this.graph.scene
+    if (!sc) return null
+    return { scaleX: sc.scaleX, scaleY: sc.scaleY, translateX: sc.translateX, translateY: sc.translateY }
+  }
+  _restoreView(v) {
+    if (!v) return
+    const sc = this.graph && this.graph.scene
+    if (!sc) return
+    sc.scaleX = v.scaleX
+    sc.scaleY = v.scaleY
+    sc.translateX = v.translateX
+    sc.translateY = v.translateY
+    if (this.graph.refresh) this.graph.refresh()
+  }
+
+  // 运行时切换节点样式（flat/cube）：存样式后用最近一次 canvas 整图重绘，
+  // 重绘前后保持当前缩放/平移不变（避免视图跳变）
   setNodeStyle(style) {
     if (style !== 'flat' && style !== 'cube') return
     if (this.opts.nodeStyle === style) return
     this.opts.nodeStyle = style
-    if (this._lastCanvas) this.renderCanvas(this._lastCanvas)
+    if (this._lastCanvas) {
+      const view = this._saveView()
+      this.renderCanvas(this._lastCanvas)
+      this._restoreView(view)
+    }
   }
   getNodeStyle() { return this.opts.nodeStyle }
 
@@ -774,27 +799,26 @@ export class TopoEngine {
       } else if (flat) {
         l.strokeColor = dark ? 'rgba(110,140,190,0.8)' : 'rgba(100,125,160,0.85)'
       }
-      // 箭头 + 速率标签 + 流光（仅 flat 模式开启）
+      // 流光：样式无关（flat/cube 都画），仅正常线画流动光柱、faulty 红线不画。
+      // 流光包一层 paint（先 orig 画原生线再叠流光），与节点样式无关，故 cube 也能用。
+      l._flowColor = faulty ? null : (dark ? 'rgba(120,210,255,0.9)' : 'rgba(70,150,235,0.9)')
+      if (l._flowColor) l._flowOffset = (l._flowOffset ?? Math.random())
+      const orig = l.paint
+      // 只包一层，避免 renderCanvas 重绘后重复包裹
+      if (!l._arrowWrapped) {
+        l.paint = linkArrowPaint(orig)
+        l._arrowWrapped = true
+      }
+      // 箭头 + 速率标签：仅 flat 模式（cube 模式走引擎原生连线，不叠自绘箭头）
       if (flat) {
         l._arrowColor = faulty ? 'rgba(255,90,90,1)' : (dark ? 'rgba(140,170,215,0.95)' : 'rgba(80,105,140,0.95)')
         l._arrowLabel = lp.speed || ''
         l._arrowLabelBg = dark ? 'rgba(13,26,48,0.82)' : 'rgba(255,255,255,0.85)'
         l._arrowLabelColor = faulty ? 'rgba(255,120,120,1)' : (dark ? 'rgba(180,205,235,0.95)' : 'rgba(70,90,120,0.95)')
-        // 流光：正常线画流动光点（相位错开）；faulty 红线静态虚线，不画
-        l._flowColor = faulty ? null : (dark ? 'rgba(120,210,255,0.9)' : 'rgba(70,150,235,0.9)')
-        if (l._flowColor) l._flowOffset = (l._flowOffset ?? Math.random())
-        if (!l._arrowPaint) l._arrowPaint = true
-        const orig = l.paint
-        // 只包一层，避免 renderCanvas 重绘后重复包裹
-        if (!l._arrowWrapped) {
-          l.paint = linkArrowPaint(orig)
-          l._arrowWrapped = true
-        }
       } else {
-        // cube 模式：清除 flat 标记
+        // cube 模式：清掉自绘箭头/标签，保留流光
         l._arrowColor = null
         l._arrowLabel = ''
-        l._flowColor = null
       }
     })
   }

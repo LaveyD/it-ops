@@ -1,13 +1,15 @@
 // @ts-nocheck
 // 3D 拓扑场景管理器（Three.js）：active 拓扑 → 三维网络纵深视图
 //  - 坐标映射：节点 x → X、y → Z（网络分层 → 前后纵深），状态 → Y 轴抬升 + 颜色
-//  - 节点：状态色圆盘 + 类型色圆环 + 落地光柱 + 文字标签（sprite）
+//  - 节点：类型 3D 模型（itops-models.ts 过程式重建，按类型色重染）+ 状态色圆环
+//    + 落地光柱 + 文字标签（sprite）；未知类型回退状态色圆盘
 //  - 连线：两端状态最差者着色
 //  - 交互：OrbitControls（旋转/缩放/平移）、hover 高亮、点击拾取、focusNode 镜头飞行
 //  - 实时：setDeviceStatus 增量改色改高度（WS feed_update 驱动），alert 呼吸
 // 参照 twin/room-core.ts 的架构（相机/拾取/dispose 同款写法）。
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { buildItopsModel, tintItopsModel } from './itops-models'
 
 export const STATUS_3D_COLOR: Record<string, number> = {
   normal: 0x22c55e,
@@ -97,11 +99,13 @@ interface NodeRec {
   status: string
   x: number            // 世界坐标（数据坐标 * PX）
   y: number
-  disc: THREE.Mesh
+  mesh: THREE.Object3D // 类型 3D 模型（Group）或未知类型的回退圆盘（Mesh）
   ring: THREE.Mesh
   stem: THREE.Mesh
   label: THREE.Sprite
   targetLift: number   // 状态变化时向目标高度平滑过渡
+  isModel: boolean     // 是否为 3D 模型节点（回退圆盘 false）
+  baseScale: number    // 缩放基准（模型=节点半径 r；回退圆盘=1），alert 呼吸按此等比
 }
 
 interface LinkRec {
@@ -154,9 +158,7 @@ export class Topo3DCore {
     const h = container.clientHeight || 500
 
     this.scene.background = new THREE.Color(0x0a1220)
-    this.scene.fog = new THREE.Fog(0x0a1220, 260, 560)
-
-    this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 2000)
+    this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 4000)
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.setSize(w, h)
@@ -167,7 +169,9 @@ export class Topo3DCore {
     this.controls.dampingFactor = 0.08
     this.controls.maxPolarAngle = Math.PI * 0.49
     this.controls.minDistance = 60
-    this.controls.maxDistance = 600
+    this.controls.maxDistance = 2600
+    // fog 初始占位，fitCamera 按实际相机距离动态重设（避免竖长画布下距离超远平面被吞黑）
+    this.scene.fog = new THREE.Fog(0x0a1220, 400, 900)
 
     // 地面网格 + 环境光
     const grid = new THREE.GridHelper(700, 35, 0x1d3a5f, 0x12233c)
@@ -259,13 +263,29 @@ export class Topo3DCore {
     // 节点主色 = 类型色（TDDC 风格）；状态由抬升高度 + 光柱/圆环色表达
     const typeColor = hexFromCss(n.color || n.fillColor)
 
-    const disc = new THREE.Mesh(
-      new THREE.CylinderGeometry(r, r, 1.4, 40),
-      new THREE.MeshStandardMaterial({ color: typeColor, emissive: typeColor, emissiveIntensity: 0.3, roughness: 0.4 }),
-    )
-    disc.position.set(wx, y, wz)
-    disc.userData.nodeId = n.id
-    this.scene.add(disc)
+    // 类型 3D 模型（过程式重建，重染为节点类型色）；未知类型回退状态色圆盘
+    const model = buildItopsModel(n.type || '')
+    let mesh: THREE.Object3D
+    let isModel = false
+    if (model) {
+      tintItopsModel(model, typeColor)
+      // 归一化：模型基准宽约 2（puck R=1 / cube SIZE≈1.1），缩放到节点直径 2r
+      model.scale.setScalar(Math.max(0.01, r))
+      model.position.set(wx, y, wz)
+      model.traverse((o) => { o.userData.nodeId = n.id })
+      this.scene.add(model)
+      mesh = model
+      isModel = true
+    } else {
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(r, r, 1.4, 40),
+        new THREE.MeshStandardMaterial({ color: typeColor, emissive: typeColor, emissiveIntensity: 0.3, roughness: 0.4 }),
+      )
+      disc.position.set(wx, y, wz)
+      disc.userData.nodeId = n.id
+      this.scene.add(disc)
+      mesh = disc
+    }
 
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(r + 1.1, 0.45, 10, 48),
@@ -289,10 +309,11 @@ export class Topo3DCore {
     label.position.set(wx, y + 5.5, wz)
     this.scene.add(label)
 
-    this.pickables.push(disc)
+    this.pickables.push(mesh)
     return {
       id: n.id, label: n.label, type: n.type || '', deviceId, status,
-      x: wx, y: wz, disc, ring, stem, label, targetLift: lift,
+      x: wx, y: wz, mesh, ring, stem, label, targetLift: lift, isModel,
+      baseScale: isModel ? Math.max(0.01, r) : 1,
     }
   }
 
@@ -422,7 +443,7 @@ export class Topo3DCore {
   private applyHidden() {
     for (const rec of this.nodes.values()) {
       const vis = !this.hidden.has(rec.type)
-      rec.disc.visible = vis
+      rec.mesh.visible = vis
       rec.ring.visible = vis
       rec.stem.visible = vis
       rec.label.visible = vis && !this.hideLabels
@@ -430,7 +451,7 @@ export class Topo3DCore {
     for (const rec of this.links) {
       const a = this.nodes.get(rec.source)
       const b = this.nodes.get(rec.target)
-      const vis = !!(a && b && a.disc.visible && b.disc.visible)
+      const vis = !!(a && b && a.mesh.visible && b.mesh.visible)
       rec.line.visible = vis
       rec.arrow.visible = vis
       rec.bar.visible = vis && !rec.faulty
@@ -440,7 +461,7 @@ export class Topo3DCore {
 
   nodeVisible(id: string) {
     const rec = this.nodes.get(id)
-    return !!(rec && rec.disc.visible)
+    return !!(rec && rec.mesh.visible)
   }
 
   // ===== 相机 =====
@@ -454,12 +475,23 @@ export class Topo3DCore {
     }
     const cx = (minX + maxX) / 2
     const cz = (minZ + maxZ) / 2
-    const radius = Math.max(maxX - minX, maxZ - minZ) / 2 + 30
-    const dist = radius / Math.tan((this.camera.fov * Math.PI) / 360)
+    // 距离要同时满足水平与垂直两个方向的覆盖（大屏 3D 画布常为竖长条，
+    // 只按垂直 fov 算会把左右节点裁在画框外）；横屏时 distH < distV，结果不变
+    const vFov = (this.camera.fov * Math.PI) / 180
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect)
+    const dist = Math.max(
+      ((maxX - minX) / 2 + 30) / Math.tan(hFov / 2),
+      ((maxZ - minZ) / 2 + 30) / Math.tan(vFov / 2),
+    )
     // 默认视角：正前方（无水平旋转）+ 俯角约 50°（与 TDDC 参考视角一致）
     this.camera.position.set(cx, dist * 0.78, cz + dist * 0.64)
     this.controls.target.set(cx, 2, cz)
     this.controls.update()
+    // fog 跟随相机距离放大：near 取 dist 的 1.2 倍（节点在 dist 处，保持清晰），
+    // far 取 2.5 倍（远端网格渐隐保留纵深）
+    const fog = this.scene.fog as THREE.Fog
+    fog.near = dist * 1.2
+    fog.far = dist * 2.5
   }
 
   focusNode(id: string) {
@@ -481,10 +513,14 @@ export class Topo3DCore {
       -((e.clientY - rect.top) / rect.height) * 2 + 1,
     )
     this.raycaster.setFromCamera(v, this.camera)
-    const hits = this.raycaster.intersectObjects(this.pickables.filter((o) => o.visible), false)
+    // recursive=true：pickables 里既有 Group（3D 模型，需命中子 mesh）也有 Mesh（回退圆盘）
+    const hits = this.raycaster.intersectObjects(this.pickables.filter((o) => o.visible), true)
     if (!hits.length) return null
-    const id = hits[0].object.userData.nodeId
-    return this.nodes.get(id) || null
+    // 命中的可能是模型子 mesh，沿 parent 链找带 nodeId 的对象
+    let o: THREE.Object3D | null = hits[0].object
+    while (o && !o.userData.nodeId) o = o.parent
+    const id = o ? o.userData.nodeId : null
+    return (id && this.nodes.get(id)) || null
   }
 
   private onClick = (e: MouseEvent) => {
@@ -502,11 +538,26 @@ export class Topo3DCore {
   private onMove = (e: MouseEvent) => {
     const rec = this.pick(e)
     if (rec !== this.hover) {
-      if (this.hover) (this.hover.disc.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.35
+      if (this.hover) this.setGlow(this.hover, false)
       this.hover = rec
-      if (rec) (rec.disc.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.9
+      if (rec) this.setGlow(rec, true)
       this.renderer.domElement.style.cursor = rec ? 'pointer' : ''
       this.onNodeHover?.(rec ? rec.id : null)
+    }
+  }
+
+  // hover 高亮：模型节点遍历各 mesh 给 emissive 上色（按本体颜色 35% 亮度发光），
+  // 回退圆盘直接调 emissiveIntensity（原行为）
+  private setGlow(rec: NodeRec, on: boolean) {
+    if (rec.isModel) {
+      rec.mesh.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
+        if (!m || !m.emissive) return
+        if (on) m.emissive.copy(m.color).multiplyScalar(0.55)
+        else m.emissive.setHex(0x000000)
+      })
+    } else {
+      ;((rec.mesh as THREE.Mesh).material as THREE.MeshStandardMaterial).emissiveIntensity = on ? 0.9 : 0.35
     }
   }
 
@@ -514,24 +565,25 @@ export class Topo3DCore {
   private tick() {
     const dt = Math.min(0.05, (this.elapsed ? 0.016 : 0.016))
     this.elapsed += dt
-    // 高度平滑过渡（圆盘/圆环/标签上移，光柱拉伸）
+    // 高度平滑过渡（节点/圆环/标签上移，光柱拉伸）
     for (const rec of this.nodes.values()) {
       const ty = DISC_Y + rec.targetLift
-      const dy = ty - rec.disc.position.y
+      const dy = ty - rec.mesh.position.y
       if (Math.abs(dy) > 0.01) {
-        rec.disc.position.y += dy * 0.12
+        rec.mesh.position.y += dy * 0.12
         rec.ring.position.y += dy * 0.12
         rec.label.position.y += dy * 0.12
       }
-      const stemH = Math.max(0.01, rec.disc.position.y - 0.1)
+      const stemH = Math.max(0.01, rec.mesh.position.y - 0.1)
       rec.stem.scale.y = stemH
       rec.stem.position.y = 0.1 + stemH / 2
     }
-    // alert 呼吸（圆盘 + 光柱）
+    // alert 呼吸（节点 + 光柱）：模型等比缩放，回退圆盘只缩放水平
     for (const rec of this.nodes.values()) {
       if (rec.status !== 'alert') continue
       const s = 1 + Math.sin(this.elapsed * 4.5) * 0.08
-      rec.disc.scale.set(s, 1, s)
+      if (rec.isModel) rec.mesh.scale.setScalar(rec.baseScale * s)
+      else rec.mesh.scale.set(s, 1, s)
       ;(rec.stem.material as THREE.MeshBasicMaterial).opacity = 0.35 + (Math.sin(this.elapsed * 4.5) + 1) * 0.15
     }
     // 连线流光：一小段发光短圆柱沿 a→b 滑过（彗星式，相位错开）
@@ -579,8 +631,15 @@ export class Topo3DCore {
 
   private clear() {
     for (const rec of this.nodes.values()) {
-      this.scene.remove(rec.disc, rec.ring, rec.stem, rec.label)
-      rec.disc.geometry.dispose(); (rec.disc.material as THREE.Material).dispose()
+      this.scene.remove(rec.mesh, rec.ring, rec.stem, rec.label)
+      // 模型 Group 遍历释放；回退圆盘单个 dispose
+      rec.mesh.traverse((o) => {
+        const mesh = o as THREE.Mesh
+        if (mesh.geometry) mesh.geometry.dispose()
+        const m = mesh.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(m)) m.forEach((x) => x.dispose())
+        else m?.dispose()
+      })
       rec.ring.geometry.dispose(); (rec.ring.material as THREE.Material).dispose()
       rec.stem.geometry.dispose(); (rec.stem.material as THREE.Material).dispose()
       rec.label.material.map?.dispose(); rec.label.material.dispose()
