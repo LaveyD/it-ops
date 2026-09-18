@@ -22,6 +22,7 @@ const props = defineProps<{
 }>()
 const box = ref<HTMLElement>()
 const active = ref<TopologyActive | null>(null)
+let activeFp = '' // canvas 指纹：覆盖保存不改 id，靠内容变化触发重绘
 const lastAlerts = ref<Record<string, string>>({}) // deviceId -> 最近一条告警 title
 let engine: TopoEngine | null = null
 
@@ -67,17 +68,20 @@ function renderSource(canvas, devices) {
 async function load() {
   try {
     const a = await api.topologyActive()
-    const changed = !active.value || active.value.id !== a.id
+    // 结构变更判定：id 变化或 canvas 内容变化（"覆盖保存当前版本"不改 id）
+    const fp = JSON.stringify(a.canvas)
+    const changed = !active.value || active.value.id !== a.id || fp !== activeFp
     if (engine) {
       engine.setDevices(a.devices)
       if (changed) {
         engine.renderCanvas(renderSource(a.canvas, a.devices))
-        // 首次加载（active 尚为 null）或拓扑版本变更 → 重新自适应缩放居中，
+        // 首次加载（active 尚为 null）或拓扑结构变更 → 重新自适应缩放居中，
         // 保证首屏就铺满并居中，而不是停在默认的左上角视图。
         setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
       }
     }
     active.value = a
+    activeFp = fp
     // 最近告警（每条 deviceId 一条，供 hover 浮层）
     try {
       const alerts = await api.alerts({ limit: '50' })

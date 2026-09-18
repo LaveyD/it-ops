@@ -17,6 +17,7 @@ let poll: ReturnType<typeof setInterval> | null = null
 
 const active = ref<TopologyActive | null>(null)
 const loading = ref(true)
+let activeFp = '' // canvas 指纹：覆盖保存不改 id，靠内容变化触发重绘
 const hover = ref<{ show: boolean; x: number; y: number; text: string }>({ show: false, x: 0, y: 0, text: '' })
 
 const statusText: Record<string, string> = { normal: '正常', warn: '警告', alert: '严重', unmanaged: '未纳管' }
@@ -31,9 +32,12 @@ function openDevice(nodeId: string) {
 async function load() {
   try {
     const a = await api.topologyActive()
-    const changed = !active.value || active.value.id !== a.id
+    // 结构变更判定：id 变化或 canvas 内容变化（覆盖保存不改 id）
+    const fp = JSON.stringify(a.canvas)
+    const changed = !active.value || active.value.id !== a.id || fp !== activeFp
     if (core && changed) core.setTopology(a.canvas, a.devices)
     active.value = a
+    activeFp = fp
   } catch (e) { console.error(e) }
   loading.value = false
 }

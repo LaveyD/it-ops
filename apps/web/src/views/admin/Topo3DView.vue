@@ -20,6 +20,7 @@ let offFeed: (() => void) | null = null
 let poll: ReturnType<typeof setInterval> | null = null
 
 const active = ref<TopologyActive | null>(null)
+let activeFp = '' // active canvas 指纹：覆盖保存不改 id，靠内容变化触发重绘
 const loading = ref(true)
 
 // hover 浮层
@@ -68,9 +69,13 @@ function openDevice(nodeId: string) {
 async function load() {
   try {
     const a = await api.topologyActive()
-    const changed = !active.value || active.value.id !== a.id
+    // 结构变更判定：id 变化（新建/切换版本）或 canvas 内容变化
+    // （"覆盖保存当前版本"不改 id，必须比内容，否则已打开的 3D 页不刷新）
+    const fp = JSON.stringify(a.canvas)
+    const changed = !active.value || active.value.id !== a.id || fp !== activeFp
     if (core && changed) core.setTopology(a.canvas, a.devices)
     active.value = a
+    activeFp = fp
   } catch (e) { console.error(e) }
   loading.value = false
 }
