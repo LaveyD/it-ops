@@ -485,7 +485,10 @@ export class Topo3DCore {
     )
     // 默认视角：正前方（无水平旋转）+ 俯角约 50°（与 TDDC 参考视角一致）
     this.camera.position.set(cx, dist * 0.78, cz + dist * 0.64)
-    this.controls.target.set(cx, 2, cz)
+    // target 取在模型体中心（≈DISC_Y+r≈5.7）之上一点：俯视时 up 指向目标，
+    // 节点高于目标会投影到画面下半部（target 低 → 构图偏下）；
+    // 取 8 使节点群上移到画面中上位置（实测 2 时节点群在画面偏下）
+    this.controls.target.set(cx, 8, cz)
     this.controls.update()
     // fog 跟随相机距离放大：near 取 dist 的 1.2 倍（节点在 dist 处，保持清晰），
     // far 取 2.5 倍（远端网格渐隐保留纵深）
