@@ -150,10 +150,16 @@ export class Topo3DCore {
   onNodeHover: ((id: string | null) => void) | null = null
   // 大屏模式：节点名称 sprite 默认隐藏（hover 浮层展示名称）
   private hideLabels = false
+  // 取景目标：节点群垂直中点距画布顶部的比例（NDC v）。
+  // 竖长大屏画布（~578×1586）用 0.42（距顶 26%）；宽幅预览画布（~774×549）用
+  // 默认 0.32（距顶 34%）——宽幅画布 dist 小，再往上推顶边会裁出屏外（b45 实测
+  // 34% 时顶边已 4.6% 贴顶）
+  private fitTarget = 0.32
 
-  constructor(container: HTMLElement, opts?: { hideLabels?: boolean }) {
+  constructor(container: HTMLElement, opts?: { hideLabels?: boolean; fitTarget?: number }) {
     this.container = container
     this.hideLabels = !!opts?.hideLabels
+    if (typeof opts?.fitTarget === 'number') this.fitTarget = opts.fitTarget
     const w = container.clientWidth || 800
     const h = container.clientHeight || 500
 
@@ -475,26 +481,73 @@ export class Topo3DCore {
     }
     const cx = (minX + maxX) / 2
     const cz = (minZ + maxZ) / 2
-    // 距离要同时满足水平与垂直两个方向的覆盖（大屏 3D 画布常为竖长条，
-    // 只按垂直 fov 算会把左右节点裁在画框外）；横屏时 distH < distV，结果不变
+    // 默认视角：正前方（无水平旋转）+ 俯角约 50°（与 TDDC 参考视角一致）
     const vFov = (this.camera.fov * Math.PI) / 180
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect)
+    // 距离要同时满足水平与垂直两个方向的覆盖（竖长画布下垂直 fov 才是瓶颈）
     const dist = Math.max(
       ((maxX - minX) / 2 + 30) / Math.tan(hFov / 2),
       ((maxZ - minZ) / 2 + 30) / Math.tan(vFov / 2),
     )
-    // 默认视角：正前方（无水平旋转）+ 俯角约 50°（与 TDDC 参考视角一致）
-    this.camera.position.set(cx, dist * 0.78, cz + dist * 0.64)
-    // target 取在模型体中心（≈DISC_Y+r≈5.7）之上一点：俯视时 up 指向目标，
-    // 节点高于目标会投影到画面下半部（target 低 → 构图偏下）；
-    // 取 8 使节点群上移到画面中上位置（实测 2 时节点群在画面偏下）
-    this.controls.target.set(cx, 8, cz)
+    // 俯角（50°）下集群垂直落位由"世界深度跨度 + 俯角"决定，且与 target.y 几乎无关
+    //（target.y 0→12 只移动 2-3% 画布），所以不能用 target.y 硬凑构图。
+    // 这里用真实相机矩阵二分求 target.y，把"节点群垂直中点"精确放到画布 34%
+    //（距顶部，明显偏上），任意画布比例/拓扑形状都自适应
+    const PITCH = Math.atan2(0.78, 0.64)
+    const pUp = Math.sin(PITCH), pFwd = Math.cos(PITCH)
+    // 模型体中心参考高度（圆盘底 DISC_Y + 约 2r 的一半），作为"视觉中心"代理
+    const NODE_Y = DISC_Y + 4
+    const v = new THREE.Vector3()
+    const clusterMidV = (ty: number) => {
+      const camP = new THREE.Vector3(cx, ty + dist * pUp, cz + dist * pFwd)
+      this.camera.position.copy(camP)
+      this.camera.up.set(0, 1, 0)
+      this.camera.lookAt(new THREE.Vector3(cx, ty, cz))
+      this.camera.updateProjectionMatrix()
+      this.camera.updateMatrixWorld()
+      const ps: number[] = []
+      for (const r of recs) {
+        v.set(r.x, NODE_Y, r.y).project(this.camera)
+        ps.push(v.y)
+      }
+      ps.sort((a, b) => a - b)
+      return ps[(ps.length - 1) >> 1]
+    }
+    // 目标：节点群垂直中点落到 this.fitTarget（NDC v，见构造参数注释）。
+    // 硬约束：相机必须在地面之上（ty + dist*pUp >= 12），否则投影翻转、节点群飞屏。
+    //   竖长画布 dist 大，相机高度够，目标可达；宽幅画布 dist 小，可能够不到，
+    //   此时退到"安全范围内能达到的最高位"，不跑飞。
+    const TARGET = this.fitTarget
+    const tyMin = -dist * pUp + 12   // 相机离地 12 单位（最低安全焦点高度）
+    const tyMax = 200                // 焦点最高（抬升最少）
+    const fLo = clusterMidV(tyMin)   // 最低焦点 → 抬升最多 → v 最大
+    const fHi = clusterMidV(tyMax)   // 最高焦点 → 抬升最少 → v 最小
+    let ty: number
+    if (fLo <= TARGET) {
+      ty = tyMin                     // 安全范围内都到不了目标 → 取能抬的最高安全位
+    } else if (fHi >= TARGET) {
+      ty = tyMax                     // 不抬已经高于目标 → 保持最少抬升
+    } else {
+      // f 随 ty 单调递减（ty 越小节点群越高/v 越大）：v>TARGET 偏高→需增大 ty(lo)；v<TARGET 偏低→需减小 ty(hi)
+      let lo = tyMin, hi = tyMax
+      for (let i = 0; i < 40; i++) {
+        const mid = (lo + hi) / 2
+        if (clusterMidV(mid) > TARGET) lo = mid   // 偏高 → 增大 ty
+        else hi = mid                              // 偏低 → 减小 ty
+      }
+      ty = (lo + hi) / 2
+    }
+    this.camera.position.set(cx, ty + dist * pUp, cz + dist * pFwd)
+    this.camera.up.set(0, 1, 0)
+    this.camera.lookAt(new THREE.Vector3(cx, ty, cz))
+    this.camera.updateProjectionMatrix()
+    this.controls.target.set(cx, ty, cz)
     this.controls.update()
     // fog 跟随相机距离放大：near 取 dist 的 1.2 倍（节点在 dist 处，保持清晰），
     // far 取 2.5 倍（远端网格渐隐保留纵深）
     const fog = this.scene.fog as THREE.Fog
     fog.near = dist * 1.2
-    fog.far = dist * 2.5
+    fog.far = Math.min(this.camera.far * 0.8, dist * 2.5)
   }
 
   focusNode(id: string) {

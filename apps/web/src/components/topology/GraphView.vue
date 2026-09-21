@@ -97,6 +97,49 @@ function toggleNodeStyle() {
   engine?.setNodeStyle(nodeStyle.value)
 }
 
+// ===== 容器尺寸跟随 =====
+// 引擎（GraphVis UMD）只在 window resize 时同步 canvas 到容器尺寸，不响应容器自身变化。
+// 大屏流式布局下页面高度会随卡片加载后撑高（实测容器 1161→1586），2D canvas 停在旧高度：
+// 切 3D 再切回 2D 时新 canvas 按新高度居中，图整体下移约 213px。
+// 这里用 ResizeObserver 监听容器：尺寸变化且 window 没变时代发 window.resize 让引擎同步
+// canvas（引擎的处理器会保留 scale/translate）；加载稳定窗口内（用户未交互）再 fitToView
+// 重新居中，保证首屏与切换回 2D 后的构图一致。用户一旦拖动/缩放/点击即停止自动居中。
+let ro: ResizeObserver | null = null
+let lastWinW = 0
+let lastWinH = 0
+let userTouched = false
+let stabilizeTimer: ReturnType<typeof setTimeout> | null = null
+
+function onUserTouch() { userTouched = true }
+
+function onContainerResize() {
+  const el = box.value
+  const g = engine?.graph
+  if (!el || !g || !g.stage) return
+  const w = el.clientWidth, h = el.clientHeight
+  if (w < 4 || h < 4 || (g.stage.width === w && g.stage.height === h)) return
+  // window 真的变了 → 引擎自己的 window.resize 处理器会同步，这里不重复派发
+  if (window.innerWidth !== lastWinW || window.innerHeight !== lastWinH) {
+    lastWinW = window.innerWidth
+    lastWinH = window.innerHeight
+    return
+  }
+  window.dispatchEvent(new Event('resize'))
+  if (!userTouched) setTimeout(() => { if (engine?.graph && !userTouched) fitToView(engine.graph) }, 60)
+}
+
+function setupResizeFollow() {
+  if (!box.value) return
+  lastWinW = window.innerWidth
+  lastWinH = window.innerHeight
+  ro = new ResizeObserver(onContainerResize)
+  ro.observe(box.value)
+  box.value.addEventListener('mousedown', onUserTouch)
+  box.value.addEventListener('wheel', onUserTouch, { passive: true })
+  // 加载稳定窗口：卡片陆续加载导致容器数次变高，窗口结束后停止自动 re-fit
+  stabilizeTimer = setTimeout(() => { userTouched = true }, 800)
+}
+
 function onNodeClick(node) {
   const did = node.properties && node.properties.deviceId
   if (did && active.value?.devices[did]) {
@@ -166,6 +209,7 @@ onMounted(async () => {
     onEmptyClick: () => { tip.value.show = false },
   })
   engine.init(null)
+  setupResizeFollow()
   await load()
   poll = setInterval(load, 10000) // 轮询兜底：拓扑版本变更（设备状态/告警走 WS）
   // 过滤器变化 → 重渲染（数据层过滤，不依赖引擎内部 API）
@@ -198,7 +242,13 @@ onMounted(async () => {
     }
   })
 })
-onUnmounted(() => { if (poll) clearInterval(poll); offFeed?.(); engine?.dispose() })
+onUnmounted(() => {
+  if (poll) clearInterval(poll)
+  if (stabilizeTimer) clearTimeout(stabilizeTimer)
+  if (ro) { if (box.value) { box.value.removeEventListener('mousedown', onUserTouch); box.value.removeEventListener('wheel', onUserTouch) }; ro.disconnect(); ro = null }
+  offFeed?.()
+  engine?.dispose()
+})
 
 // 供父级取节点名（抽屉标题）
 function nodeLabelById(id: string) {

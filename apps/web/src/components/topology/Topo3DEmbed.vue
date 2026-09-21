@@ -60,7 +60,7 @@ function onTipMove(e: MouseEvent) {
 }
 
 onMounted(async () => {
-  core = new Topo3DCore(box.value!, { hideLabels: props.hideLabels })
+  core = new Topo3DCore(box.value!, { hideLabels: props.hideLabels, fitTarget: 0.42 })
   core.onNodeClick = (id) => openDevice(id)
   core.onNodeHover = (id) => onHover(id)
   await load()
