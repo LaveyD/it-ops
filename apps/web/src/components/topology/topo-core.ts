@@ -565,7 +565,10 @@ export function serializeGraph(graph) {
 }
 
 // 按节点包围盒自适应缩放居中
-export function fitToView(graph) {
+// topRatio：内容垂直中心在画布中的目标位置（0=顶, 0.5=正中, 1=底），默认 0.5 居中。
+// 引擎 moveCenter 后内容中心恰好在 50%；屏幕位移 = scene.translateY 位移 × scale，
+// 故 translateY += (topRatio-0.5)*stage.height/scale 即可让中心落到 topRatio（比例制，适配任意窗口）。
+export function fitToView(graph, topRatio = 0.5) {
   try {
     const nodes = graph.nodes || []
     if (!nodes.length) { if (graph.moveCenter) graph.moveCenter(); return }
@@ -581,6 +584,13 @@ export function fitToView(graph) {
     scale = Math.max(0.2, Math.min(3, scale))
     if (graph.moveCenter) graph.moveCenter(scale)
     else if (graph.setZoom) { graph.setZoom(scale); if (graph.moveCenter) graph.moveCenter() }
+    // 垂直方向按 topRatio 偏移（不动 scale 与水平居中）
+    // 注意：引擎的 refresh 在 graph（VisualGraph.prototype.refresh）上，scene 上没有
+    if (topRatio !== 0.5 && graph.scene) {
+      const s = graph.scene
+      s.translateY = (s.translateY || 0) + (topRatio - 0.5) * h / s.scaleY
+      if (graph.refresh) graph.refresh()
+    }
   } catch (e) { if (graph.moveCenter) graph.moveCenter() }
 }
 

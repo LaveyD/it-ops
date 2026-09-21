@@ -19,6 +19,9 @@ const props = defineProps<{
   externalCanvas?: { nodes: unknown[]; links: unknown[]; groups?: unknown[] } | null
   // 隐藏节点名称标签（大屏模式）：默认隐藏，hover 浮层展示名称
   hideLabels?: boolean
+  // 2D 自适应居中的垂直目标位置（0=顶, 0.5=正中）：大屏传 0.345 让构图偏上，
+  // 与 3D 取景一致；不传保持正中（管理端编辑器）
+  fitTopRatio?: number
 }>()
 const box = ref<HTMLElement>()
 const active = ref<TopologyActive | null>(null)
@@ -77,7 +80,7 @@ async function load() {
         engine.renderCanvas(renderSource(a.canvas, a.devices))
         // 首次加载（active 尚为 null）或拓扑结构变更 → 重新自适应缩放居中，
         // 保证首屏就铺满并居中，而不是停在默认的左上角视图。
-        setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+        setTimeout(() => { if (engine?.graph) fitToView(engine.graph, props.fitTopRatio) }, 60)
       }
     }
     active.value = a
@@ -112,6 +115,31 @@ let stabilizeTimer: ReturnType<typeof setTimeout> | null = null
 
 function onUserTouch() { userTouched = true }
 
+// 派发 window resize 后，引擎异步重建 canvas（同步到容器尺寸并重新居中）；
+// 直接固定延时重排会跑在引擎之前，偏移随即被引擎的居中盖掉（首屏实测 49.7 未生效）。
+// 这里轮询等 stage 尺寸跟上容器（≤600ms）+ 30ms 引擎收尾后，再做带 topRatio 偏移的
+// fitToView，保证偏移落在最后一次引擎居中之后。
+function resyncFit() {
+  const el = box.value, g0 = engine?.graph
+  if (!el || !g0) return
+  let tries = 0
+  const iv = setInterval(() => {
+    tries++
+    const g = engine?.graph
+    const done = !!g && g.stage.width === el.clientWidth && g.stage.height === el.clientHeight
+    if (done || tries > 20) {
+      clearInterval(iv)
+      setTimeout(() => {
+        if (userTouched) return
+        const g2 = engine?.graph
+        if (g2 && g2.stage.width === el.clientWidth && g2.stage.height === el.clientHeight) {
+          fitToView(g2, props.fitTopRatio)
+        }
+      }, 30)
+    }
+  }, 30)
+}
+
 function onContainerResize() {
   const el = box.value
   const g = engine?.graph
@@ -124,8 +152,9 @@ function onContainerResize() {
     lastWinH = window.innerHeight
     return
   }
+  if (userTouched) return
   window.dispatchEvent(new Event('resize'))
-  if (!userTouched) setTimeout(() => { if (engine?.graph && !userTouched) fitToView(engine.graph) }, 60)
+  resyncFit()
 }
 
 function setupResizeFollow() {
@@ -216,14 +245,14 @@ onMounted(async () => {
   watch(() => props.filter, () => {
     if (engine && active.value) {
       engine.renderCanvas(renderSource(active.value.canvas, active.value.devices))
-      setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+      setTimeout(() => { if (engine?.graph) fitToView(engine.graph, props.fitTopRatio) }, 60)
     }
   }, { deep: true })
   // 外部快照变化（查看版本切换）→ 重渲染
   watch(() => props.externalCanvas, () => {
     if (engine && active.value) {
       engine.renderCanvas(renderSource(active.value.canvas, active.value.devices))
-      setTimeout(() => { if (engine?.graph) fitToView(engine.graph) }, 60)
+      setTimeout(() => { if (engine?.graph) fitToView(engine.graph, props.fitTopRatio) }, 60)
     }
   }, { deep: true })
   // WS 增量：状态变更 → 节点立即变色；新告警 → hover 浮层最近告警
