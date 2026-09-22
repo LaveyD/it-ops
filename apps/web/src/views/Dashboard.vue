@@ -119,7 +119,7 @@ onUnmounted(() => {
           </span>
         </div>
         <div class="topo-canvas">
-          <GraphView v-if="topoMode === '2d'" ref="gv" hide-labels :fit-top-ratio="0.345" @open-device="openDevice" />
+          <GraphView v-if="topoMode === '2d'" ref="gv" hide-labels :fit-top-ratio="0.28" @open-device="openDevice" />
           <Topo3DEmbed v-else hide-labels @open-device="(id, nid, lb) => openDevice(id, nid, lb)" />
         </div>
       </div>
